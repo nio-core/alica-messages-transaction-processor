@@ -41,6 +41,10 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
         request: &sawtooth_sdk::messages::processor::TpProcessRequest,
         context: &mut dyn sawtooth_sdk::processor::handler::TransactionContext,
     ) -> Result<(), sawtooth_sdk::processor::handler::ApplyError> {
+        println!(
+            "Transaction received from {}!",
+            request.get_header().get_signer_public_key()[..6]
+        );
         Ok(())
     }
 }

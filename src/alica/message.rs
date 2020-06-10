@@ -43,7 +43,7 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
     ) -> Result<(), sawtooth_sdk::processor::handler::ApplyError> {
         println!(
             "Transaction received from {}!",
-            request.get_header().get_signer_public_key()[..6]
+            &request.get_header().get_signer_public_key()[..6]
         );
         Ok(())
     }

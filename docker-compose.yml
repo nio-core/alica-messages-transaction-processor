@@ -1,3 +1,5 @@
+--- # ------------------------------------------------------------------------------
+
 # Copyright 2017 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,31 +13,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ------------------------------------------------------------------------------
-
 version: "2.1"
 
 services:
-
   settings-tp:
     image: hyperledger/sawtooth-settings-tp:1.1
     container_name: sawtooth-settings-tp
     depends_on:
       - validator
     entrypoint: settings-tp -vv -C tcp://validator:4004
-    
+
   alica-messages-tp:
     image: sst/sawtooth-alica-messages-tp:latest
     container_name: sawtooth-alica-messages-tp
-    build: ./alica-messages-tp
-    depends_on: 
+    build: .
+    depends_on:
       - validator
     entrypoint: alica-messages-tp -C tcp://validator:4004
 
   alica-messages-client:
     image: sst/sawtooth-alica-messages-client:latest
     container_name: sawtooth-alica-messages-client
-    build: ./alica-messages-client
     depends_on:
       - alica-messages-tp
     entrypoint: bash -c "tail -f /dev/null"
@@ -49,16 +47,16 @@ services:
       - "4004:4004"
     # start the validator with an empty genesis batch
     entrypoint: "bash -c \"\
-        sawadm keygen && \
-        sawtooth keygen my_key && \
-        sawset genesis -k /root/.sawtooth/keys/my_key.priv && \
-        sawadm genesis config-genesis.batch && \
-        sawtooth-validator -vv \
-          --endpoint tcp://validator:8800 \
-          --bind component:tcp://eth0:4004 \
-          --bind network:tcp://eth0:8800 \
-          --bind consensus:tcp://eth0:5050 \
-        \""
+      sawadm keygen && \
+      sawtooth keygen my_key && \
+      sawset genesis -k /root/.sawtooth/keys/my_key.priv && \
+      sawadm genesis config-genesis.batch && \
+      sawtooth-validator -vv \
+      --endpoint tcp://validator:8800 \
+      --bind component:tcp://eth0:4004 \
+      --bind network:tcp://eth0:8800 \
+      --bind consensus:tcp://eth0:5050 \
+      \""
 
   devmode-engine:
     image: hyperledger/sawtooth-devmode-engine-rust:1.1
@@ -82,6 +80,6 @@ services:
     depends_on:
       - rest-api
     entrypoint: "bash -c \"\
-        sawtooth keygen && \
-        tail -f /dev/null \
-        \""
+      sawtooth keygen && \
+      tail -f /dev/null \
+      \""

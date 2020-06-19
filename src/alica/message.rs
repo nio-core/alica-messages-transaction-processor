@@ -10,7 +10,7 @@ pub struct Handler {
 
 impl Handler {
     pub fn new() -> Self {
-        let family_name = "alica-messages";
+        let family_name = "alica_messages";
         let mut hasher = sha2::Sha512::new();
         hasher.input(family_name);
         let result = hasher.result();

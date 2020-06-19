@@ -9,5 +9,6 @@ edition = "2018"
 [dependencies]
 clap = "2.33.1"
 data-encoding = "2.2.1"
+mockall = "0.7.1"
 sawtooth-sdk = "0.4.4"
 sha2 = "0.8.2"

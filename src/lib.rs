@@ -143,25 +143,44 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
                     .set_state_entries(vec![(address.clone(), message.message.clone())])
                 {
                     Ok(()) => Ok(()),
-                    Err(e) => Err(ApplyError::InternalError(format!(
-                        "Internal error while trying to access state address {}. Error was {}",
-                        &address, e
-                    ))),
+                    Err(e) => {
+                        let message = format!(
+                            "Internal error while trying to access state address {}. Error was {}",
+                            &address, e
+                        );
+
+                        eprintln!("{}", message);
+
+                        Err(ApplyError::InternalError(message))
+                    }
                 },
-                1 => Err(ApplyError::InvalidTransaction(format!(
-                    "Message with address {} already exists",
-                    &address
-                ))),
-                _ => Err(ApplyError::InternalError(format!(
-                    "Inconsistent state detected: address {} refers to {} entries",
-                    &address,
-                    entries.len()
-                ))),
+                1 => {
+                    let message = format!("Message with address {} already exists", &address);
+                    eprintln!("{}", message);
+                    Err(ApplyError::InvalidTransaction(message))
+                }
+                _ => {
+                    let message = format!(
+                        "Inconsistent state detected: address {} refers to {} entries",
+                        &address,
+                        entries.len()
+                    );
+
+                    eprintln!("{}", message);
+
+                    Err(ApplyError::InternalError(message))
+                }
             },
-            Err(e) => Err(ApplyError::InternalError(format!(
-                "Internal error while trying to access state address {}. Error was {}",
-                &address, e
-            ))),
+            Err(e) => {
+                let message = format!(
+                    "Internal error while trying to access state address {}. Error was {}",
+                    &address, e
+                );
+
+                eprintln!("{}", message);
+
+                Err(ApplyError::InternalError(message))
+            }
         }
     }
 }

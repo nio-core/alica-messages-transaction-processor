@@ -97,11 +97,11 @@ impl Handler {
             "{}{}{}",
             &message.agent_id, &message.message_type, &message.timestamp
         ));
-        let namespace_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
+        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
 
         let mut hasher = sha2::Sha512::new();
         hasher.update(family_name);
-        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
+        let namespace_part = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
 
         format!("{}{}", &namespace_part[..6], &payload_part[..64])
     }
@@ -319,6 +319,25 @@ mod test {
             let address = handler.state_address_for("alica_messages", &message);
 
             assert_eq!(address.as_bytes().len(), 70);
+        }
+
+        #[test]
+        fn generated_address_starts_with_transaction_family_namespace() {
+            let handler = Handler::new();
+            let message = Message {
+                agent_id: String::from("id"),
+                message_type: String::from("type"),
+                message: String::from("").as_bytes().to_vec(),
+                timestamp: String::from("684984984984"),
+            };
+
+            let address = handler.state_address_for("alica_messages", &message);
+
+            let mut hasher = sha2::Sha512::new();
+            hasher.update(handler.family_name());
+            let namespace = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
+
+            assert!(address.starts_with(&namespace[..6]))
         }
 
         #[test]

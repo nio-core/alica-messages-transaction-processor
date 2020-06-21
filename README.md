@@ -1,7 +1,7 @@
 # Alica Messages Transaction Processor
 
 Transaction Processor module intended for use within Hyperledger Sawtooth network.
-Used for logging task allocation messages, sent by agents.
+Used for logging task allocation messages, sent by ALCIA agents.
 
 ## Payload Structure
 
@@ -29,3 +29,11 @@ hex(sha512("alica_messages"))[0..6]
 
 The first 6 bytes of the 70 byte Sawtooth addresses consist of the hash of the transaction namespace.
 The remaining 64 bytes are drawn out of a unique combination of the payload components.
+
+## State Rules
+
+`WHEN <address> exists THEN do not update`
+
+`WHEN <address> exists not THEN create new entry <address, payload>`
+
+`WHEN <address> exists multiple times THEN inconsistent state error`

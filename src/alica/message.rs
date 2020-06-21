@@ -11,6 +11,7 @@ pub struct Message {
 }
 
 impl Message {
+    // payload syntax: agent_id|message_type|message|timestamp
     pub fn from(bytes: Vec<u8>) -> Result<Message, ApplyError> {
         let payload = match String::from_utf8(bytes) {
             Ok(payload) => payload,
@@ -78,8 +79,8 @@ impl Handler {
     pub fn new() -> Self {
         let family_name = "alica_messages";
         let mut hasher = sha2::Sha512::new();
-        hasher.input(family_name);
-        let result = hasher.result();
+        hasher.update(family_name);
+        let result = hasher.finalize();
 
         let namespace = data_encoding::HEXLOWER.encode(&result[..6]);
 
@@ -88,6 +89,21 @@ impl Handler {
             family_versions: vec![String::from("0.1.0")],
             family_namespaces: vec![namespace],
         }
+    }
+
+    fn state_address_for(&self, family_name: &str, message: &Message) -> String {
+        let mut hasher = sha2::Sha512::new();
+        hasher.update(format!(
+            "{}{}{}",
+            &message.agent_id, &message.message_type, &message.timestamp
+        ));
+        let namespace_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
+
+        let mut hasher = sha2::Sha512::new();
+        hasher.update(family_name);
+        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
+
+        format!("{}{}", &namespace_part[..6], &payload_part[..64])
     }
 }
 
@@ -114,13 +130,12 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
             &request.get_header().get_signer_public_key()[..6]
         );
 
-        // payload syntax: agent_id|message_type|message|timestamp
         let message = match Message::from(request.get_payload().to_vec()) {
             Ok(m) => m,
             Err(e) => return Err(e),
         };
 
-        // Addresses: namespace + hex(sha512(AgentId + MessageType + Timestamp))[0..32]
+        let address = self.state_address_for(&self.family_name(), &message);
 
         Ok(())
     }
@@ -240,6 +255,36 @@ mod test {
             request.set_payload("id|type|msg|ts".as_bytes().to_vec());
 
             handler.apply(&request, &mut context).unwrap();
+        }
+
+        #[test]
+        fn generated_address_is_70_bytes_in_size() {
+            let handler = Handler::new();
+            let message = Message {
+                agent_id: String::from("id"),
+                message_type: String::from("type"),
+                message: String::from("message").as_bytes().to_vec(),
+                timestamp: String::from("6876984987987989"),
+            };
+
+            let address = handler.state_address_for("alica_messages", &message);
+
+            assert_eq!(address.as_bytes().len(), 70);
+        }
+
+        #[test]
+        fn generated_address_for_empty_message_is_70_bytes_in_size() {
+            let handler = Handler::new();
+            let message = Message {
+                agent_id: String::from("id"),
+                message_type: String::from("type"),
+                message: String::from("").as_bytes().to_vec(),
+                timestamp: String::from("684984984984"),
+            };
+
+            let address = handler.state_address_for("alica_messages", &message);
+
+            assert_eq!(address.as_bytes().len(), 70);
         }
     }
 }

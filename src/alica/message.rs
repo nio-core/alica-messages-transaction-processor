@@ -137,7 +137,32 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
 
         let address = self.state_address_for(&self.family_name(), &message);
 
-        Ok(())
+        match context.get_state_entries(&vec![address.clone()][..]) {
+            Ok(entries) => match entries.len() {
+                0 => match context
+                    .set_state_entries(vec![(address.clone(), message.message.clone())])
+                {
+                    Ok(()) => Ok(()),
+                    Err(e) => Err(ApplyError::InternalError(format!(
+                        "Internal error while trying to access state address {}. Error was {}",
+                        &address, e
+                    ))),
+                },
+                1 => Err(ApplyError::InvalidTransaction(format!(
+                    "Message with address {} already exists",
+                    &address
+                ))),
+                _ => Err(ApplyError::InternalError(format!(
+                    "Inconsistent state detected: address {} refers to {} entries",
+                    &address,
+                    entries.len()
+                ))),
+            },
+            Err(e) => Err(ApplyError::InternalError(format!(
+                "Internal error while trying to access state address {}. Error was {}",
+                &address, e
+            ))),
+        }
     }
 }
 
@@ -249,6 +274,15 @@ mod test {
             let mut request = TpProcessRequest::new();
             let mut context = MockContext::new();
 
+            context
+                .expect_get_state_entries()
+                .times(1)
+                .returning(|_addresses| Ok(vec![]));
+            context
+                .expect_set_state_entries()
+                .times(1)
+                .returning(|_entries| Ok(()));
+
             let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
             header.set_signer_public_key(String::from("980490840984984"));
             request.set_header(header);
@@ -285,6 +319,85 @@ mod test {
             let address = handler.state_address_for("alica_messages", &message);
 
             assert_eq!(address.as_bytes().len(), 70);
+        }
+
+        #[test]
+        fn apply_adds_non_existing_entry() {
+            let handler = Handler::new();
+
+            let mut request = TpProcessRequest::new();
+
+            let mut context = MockContext::new();
+            context
+                .expect_get_state_entries()
+                .times(1)
+                .returning(|_addresses| Ok(vec![]));
+            context
+                .expect_set_state_entries()
+                .times(1)
+                .returning(|_entries| Ok(()));
+
+            let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+            header.set_signer_public_key(String::from("980490840984984"));
+            request.set_header(header);
+            request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+
+            handler.apply(&request, &mut context).unwrap();
+        }
+
+        #[test]
+        fn apply_fails_with_existing_entry() {
+            let handler = Handler::new();
+
+            let mut request = TpProcessRequest::new();
+            let mut context = MockContext::new();
+            context
+                .expect_get_state_entries()
+                .times(1)
+                .returning(|addresses| {
+                    let mut entries = Vec::new();
+                    for addr in addresses {
+                        entries.push((addr.clone(), vec![0x0]));
+                    }
+
+                    Ok(entries)
+                });
+            context.expect_set_state_entries().times(0);
+
+            let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+            header.set_signer_public_key(String::from("980490840984984"));
+            request.set_header(header);
+            request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+
+            handler.apply(&request, &mut context).unwrap_err();
+        }
+
+        #[test]
+        fn apply_fails_if_multiple_entries_exist() {
+            let handler = Handler::new();
+
+            let mut request = TpProcessRequest::new();
+
+            let mut context = MockContext::new();
+            context
+                .expect_get_state_entries()
+                .times(1)
+                .returning(|addresses| {
+                    let mut entries = Vec::new();
+                    for addr in addresses {
+                        entries.push((addr.clone(), vec![0x0]));
+                        entries.push((addr.clone(), vec![0x1]));
+                    }
+
+                    Ok(entries)
+                });
+
+            let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+            header.set_signer_public_key(String::from("980490840984984"));
+            request.set_header(header);
+            request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+
+            handler.apply(&request, &mut context).unwrap_err();
         }
     }
 }

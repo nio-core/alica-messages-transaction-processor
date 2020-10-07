@@ -2,6 +2,7 @@ use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sha2::{Sha512, Digest};
 use crate::Message;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext};
+use sawtooth_sdk::processor::handler::ApplyError::{InvalidTransaction, InternalError};
 
 #[derive(Debug)]
 pub struct Handler {
@@ -10,36 +11,41 @@ pub struct Handler {
     family_namespaces: Vec<String>,
 }
 
-
 impl Handler {
     pub fn new() -> Self {
         let family_name = "alica_messages";
         let mut hasher = Sha512::new();
         hasher.update(family_name);
         let result = hasher.finalize();
-
-        let namespace = data_encoding::HEXLOWER.encode(&result[..6]);
+        let encoded_result = data_encoding::HEXLOWER.encode(&result);
 
         Handler {
             family_name: String::from(family_name),
             family_versions: vec![String::from("0.1.0")],
-            family_namespaces: vec![namespace],
+            family_namespaces: vec![String::from(&encoded_result[..6])],
         }
     }
 
-    fn state_address_for(&self, family_name: &str, message: &Message) -> String {
+    fn state_address_for(&self, message: &Message) -> String {
         let mut hasher = Sha512::new();
-        hasher.update(format!(
-            "{}{}{}",
-            &message.agent_id, &message.message_type, &message.timestamp
-        ));
-        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
+        hasher.update(format!("{}{}{}", &message.agent_id, &message.message_type, &message.timestamp));
+        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize_reset());
 
-        let mut hasher = Sha512::new();
-        hasher.update(family_name);
-        let namespace_part = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
+        let namespace_part = self.family_namespaces[0].clone();
+        format!("{}{}", namespace_part, &payload_part[..64])
+    }
 
-        format!("{}{}", &namespace_part[..6], &payload_part[..64])
+    fn store_message_at(&self, message: &[u8], state_address: &str, context: &mut dyn TransactionContext)
+        -> Result<(), ApplyError> {
+        let destination_address = String::from(state_address);
+        let message_bytes = message.to_vec();
+        match context.set_state_entries(vec![(destination_address, message_bytes)]) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(ApplyError::InternalError(format!(
+                "Internal error while trying to access state address {}. Error was {}",
+                state_address, e
+            )))
+        }
     }
 }
 
@@ -66,43 +72,30 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
             &request.get_header().get_signer_public_key()[..6]
         );
 
-        let message = match Message::from(request.get_payload().to_vec()) {
+        let payload_bytes = request.get_payload().to_vec();
+        let message = match Message::from(payload_bytes) {
             Ok(m) => m,
             Err(e) => return Err(e),
         };
 
-        let address = self.state_address_for(&self.family_name(), &message);
-
-        let state_entries = match context.get_state_entries(&vec![address.clone()][..]) {
+        let transaction_address = self.state_address_for(&message);
+        let state_entries = match context.get_state_entries(&vec![transaction_address.clone()][..]) {
             Ok(entries) => entries,
-            Err(e) => {
-                let message = format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    &address, e
-                );
-                return Err(ApplyError::InternalError(message))
-            }
+            Err(e) => return Err(InternalError(
+                    format!("Internal error while trying to access state address {}. Error was {}",
+                            &transaction_address, e)))
         };
 
         let state_entry_count = state_entries.len();
-        if state_entry_count == 0 {
-            match context.set_state_entries(vec![(address.clone(), message.message.clone())])
-            {
-                Ok(()) => Ok(()),
-                Err(e) => Err(ApplyError::InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    &address, e
-                )))
-            }
-        }
-        else if state_entry_count == 1 {
-            Err(ApplyError::InvalidTransaction(
-                format!("Message with address {} already exists", &address)))
-        }
-        else {
-            Err(ApplyError::InternalError(
-                format!("Inconsistent state detected: address {} refers to {} entries",
-                        &address, state_entry_count)))
+        match state_entry_count {
+            0 => self.store_message_at(
+                &message.message,
+                transaction_address.as_str(),
+                context
+            ),
+            1 => Err(InvalidTransaction(format!("Message with address {} already exists", &transaction_address))),
+            _ => Err(InternalError(format!("Inconsistent state detected: address {} refers to {} entries",
+                                           &transaction_address, state_entry_count)))
         }
     }
 }
@@ -176,7 +169,7 @@ mod test {
             timestamp: String::from("6876984987987989"),
         };
 
-        let address = handler.state_address_for("alica_messages", &message);
+        let address = handler.state_address_for(&message);
 
         assert_eq!(address.as_bytes().len(), 70);
     }
@@ -191,7 +184,7 @@ mod test {
             timestamp: String::from("684984984984"),
         };
 
-        let address = handler.state_address_for("alica_messages", &message);
+        let address = handler.state_address_for(&message);
 
         assert_eq!(address.as_bytes().len(), 70);
     }
@@ -206,7 +199,7 @@ mod test {
             timestamp: String::from("684984984984"),
         };
 
-        let address = handler.state_address_for("alica_messages", &message);
+        let address = handler.state_address_for(&message);
 
         let mut hasher = sha2::Sha512::new();
         hasher.update(handler.family_name());

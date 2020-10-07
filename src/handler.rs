@@ -73,50 +73,36 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
 
         let address = self.state_address_for(&self.family_name(), &message);
 
-        match context.get_state_entries(&vec![address.clone()][..]) {
-            Ok(entries) => match entries.len() {
-                0 => match context
-                    .set_state_entries(vec![(address.clone(), message.message.clone())])
-                {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        let message = format!(
-                            "Internal error while trying to access state address {}. Error was {}",
-                            &address, e
-                        );
-
-                        eprintln!("{}", message);
-
-                        Err(ApplyError::InternalError(message))
-                    }
-                },
-                1 => {
-                    let message = format!("Message with address {} already exists", &address);
-                    eprintln!("{}", message);
-                    Err(ApplyError::InvalidTransaction(message))
-                }
-                _ => {
-                    let message = format!(
-                        "Inconsistent state detected: address {} refers to {} entries",
-                        &address,
-                        entries.len()
-                    );
-
-                    eprintln!("{}", message);
-
-                    Err(ApplyError::InternalError(message))
-                }
-            },
+        let state_entries = match context.get_state_entries(&vec![address.clone()][..]) {
+            Ok(entries) => entries,
             Err(e) => {
                 let message = format!(
                     "Internal error while trying to access state address {}. Error was {}",
                     &address, e
                 );
-
-                eprintln!("{}", message);
-
-                Err(ApplyError::InternalError(message))
+                return Err(ApplyError::InternalError(message))
             }
+        };
+
+        let state_entry_count = state_entries.len();
+        if state_entry_count == 0 {
+            match context.set_state_entries(vec![(address.clone(), message.message.clone())])
+            {
+                Ok(()) => Ok(()),
+                Err(e) => Err(ApplyError::InternalError(format!(
+                    "Internal error while trying to access state address {}. Error was {}",
+                    &address, e
+                )))
+            }
+        }
+        else if state_entry_count == 1 {
+            Err(ApplyError::InvalidTransaction(
+                format!("Message with address {} already exists", &address)))
+        }
+        else {
+            Err(ApplyError::InternalError(
+                format!("Inconsistent state detected: address {} refers to {} entries",
+                        &address, state_entry_count)))
         }
     }
 }

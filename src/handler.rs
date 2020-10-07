@@ -75,17 +75,17 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 
         let payload_bytes = request.get_payload().to_vec();
         let payload = match AlicaMessagePayload::from(payload_bytes) {
-            Ok(m) => m,
-            Err(e) => return Err(e),
-        };
+            Ok(payload) => Ok(payload),
+            Err(e) => Err(InvalidTransaction(format!("Error parsing payload: {}", e)))
+        }?;
 
         let transaction_address = self.state_address_for(&payload);
         let state_entries = match context.get_state_entries(&vec![transaction_address.clone()][..]) {
-            Ok(entries) => entries,
-            Err(e) => return Err(InternalError(
+            Ok(entries) => Ok(entries),
+            Err(e) => Err(InternalError(
                     format!("Internal error while trying to access state address {}. Error was {}",
                             &transaction_address, e)))
-        };
+        }?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {

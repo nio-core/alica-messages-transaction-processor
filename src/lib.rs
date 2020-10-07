@@ -1,6 +1,24 @@
-use sawtooth_sdk::processor::handler::ApplyError;
+use crate::payload::ParsingError::InvalidPayload;
 
 pub mod handler;
+
+pub mod payload {
+    use std::fmt::{Display, Formatter, Result};
+    use crate::payload::ParsingError::InvalidPayload;
+
+    #[derive(Debug)]
+    pub enum ParsingError {
+        InvalidPayload(String),
+    }
+
+    impl Display for ParsingError {
+        fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+            match self {
+                InvalidPayload(message) => write!(formatter, "{}", message)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct AlicaMessagePayload {
@@ -12,58 +30,38 @@ pub struct AlicaMessagePayload {
 
 impl AlicaMessagePayload {
     // payload syntax: agent_id|message_type|message|timestamp
-    pub fn from(bytes: Vec<u8>) -> Result<AlicaMessagePayload, ApplyError> {
+    pub fn from(bytes: Vec<u8>) -> Result<AlicaMessagePayload, payload::ParsingError> {
         let payload = match String::from_utf8(bytes) {
-            Ok(payload) => payload,
-            Err(_e) => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "Failed to decode payload in UTF8",
-                )))
-            }
-        };
+            Ok(payload) => Ok(payload),
+            Err(_) => Err(InvalidPayload(String::from("Failed to decode payload in UTF8")))
+        }?;
 
         let mut content = payload.split("|");
         let agent_id = match content.next() {
-            Some(id) => id,
-            None => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "No agent ID supplied in payload!",
-                )))
-            }
+            Some(id) => Ok(String::from(id)),
+            None => Err(InvalidPayload(String::from("No agent ID supplied in payload!")))
         };
 
         let message_type = match content.next() {
-            Some(t) => t,
-            None => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "No message type suppliied in payload!",
-                )))
-            }
+            Some(t) => Ok(String::from(t)),
+            None => Err(InvalidPayload(String::from("No message type supplied in payload!")))
         };
 
         let message = match content.next() {
-            Some(m) => m,
-            None => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "No message supplied in payload!",
-                )))
-            }
+            Some(m) => Ok(String::from(m)),
+            None => Err(InvalidPayload(String::from("No message supplied in payload!")))
         };
 
         let timestamp = match content.next() {
-            Some(t) => t,
-            None => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "No timestamp supplied in payload!",
-                )))
-            }
+            Some(t) => Ok(String::from(t)),
+            None => Err(InvalidPayload(String::from("No timestamp supplied in payload!")))
         };
 
         Ok(AlicaMessagePayload {
-            agent_id: String::from(agent_id),
-            message_type: String::from(message_type),
-            message: message.as_bytes().to_vec(),
-            timestamp: String::from(timestamp),
+            agent_id: agent_id?,
+            message_type: message_type?,
+            message: message?.as_bytes().to_vec(),
+            timestamp: timestamp?,
         })
     }
 }

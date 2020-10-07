@@ -1,17 +1,18 @@
-use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sha2::{Sha512, Digest};
-use crate::Message;
-use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext};
+use sawtooth_sdk::messages::processor::TpProcessRequest;
+use sawtooth_sdk::messages::transaction::TransactionHeader;
+use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
 use sawtooth_sdk::processor::handler::ApplyError::{InvalidTransaction, InternalError};
+use crate::AlicaMessagePayload;
 
 #[derive(Debug)]
-pub struct Handler {
+pub struct AlicaMessageTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
     family_namespaces: Vec<String>,
 }
 
-impl Handler {
+impl AlicaMessageTransactionHandler {
     pub fn new() -> Self {
         let family_name = "alica_messages";
         let mut hasher = Sha512::new();
@@ -19,16 +20,16 @@ impl Handler {
         let result = hasher.finalize();
         let encoded_result = data_encoding::HEXLOWER.encode(&result);
 
-        Handler {
+        AlicaMessageTransactionHandler {
             family_name: String::from(family_name),
             family_versions: vec![String::from("0.1.0")],
             family_namespaces: vec![String::from(&encoded_result[..6])],
         }
     }
 
-    fn state_address_for(&self, message: &Message) -> String {
+    fn state_address_for(&self, payload: &AlicaMessagePayload) -> String {
         let mut hasher = Sha512::new();
-        hasher.update(format!("{}{}{}", &message.agent_id, &message.message_type, &message.timestamp));
+        hasher.update(format!("{}{}{}", &payload.agent_id, &payload.message_type, &payload.timestamp));
         let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize_reset());
 
         let namespace_part = self.family_namespaces[0].clone();
@@ -49,7 +50,7 @@ impl Handler {
     }
 }
 
-impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
+impl TransactionHandler for AlicaMessageTransactionHandler {
     fn family_name(&self) -> String {
         self.family_name.clone()
     }
@@ -73,12 +74,12 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
         );
 
         let payload_bytes = request.get_payload().to_vec();
-        let message = match Message::from(payload_bytes) {
+        let payload = match AlicaMessagePayload::from(payload_bytes) {
             Ok(m) => m,
             Err(e) => return Err(e),
         };
 
-        let transaction_address = self.state_address_for(&message);
+        let transaction_address = self.state_address_for(&payload);
         let state_entries = match context.get_state_entries(&vec![transaction_address.clone()][..]) {
             Ok(entries) => entries,
             Err(e) => return Err(InternalError(
@@ -89,7 +90,7 @@ impl sawtooth_sdk::processor::handler::TransactionHandler for Handler {
         let state_entry_count = state_entries.len();
         match state_entry_count {
             0 => self.store_message_at(
-                &message.message,
+                &payload.message,
                 transaction_address.as_str(),
                 context
             ),
@@ -107,6 +108,7 @@ mod test {
     use sawtooth_sdk::processor::handler::{
         ContextError, TransactionContext, TransactionHandler,
     };
+    use sawtooth_sdk::messages;
 
     mockall::mock! {
             pub Context {}
@@ -122,12 +124,12 @@ mod test {
 
     #[test]
     fn apply_with_invalid_utf8_payload_fails_with_apply_error() {
-        let handler = Handler::new();
+        let handler = AlicaMessageTransactionHandler::new();
 
         let mut request = TpProcessRequest::new();
         let mut context = MockContext::new();
 
-        let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+        let mut header = TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
         request.set_payload(vec![0xff, 0xff]);
@@ -137,7 +139,7 @@ mod test {
 
     #[test]
     fn apply_with_validly_structured_payload_succeeds() {
-        let handler = Handler::new();
+        let handler = AlicaMessageTransactionHandler::new();
 
         let mut request = TpProcessRequest::new();
         let mut context = MockContext::new();
@@ -151,7 +153,7 @@ mod test {
             .times(1)
             .returning(|_entries| Ok(()));
 
-        let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+        let mut header = TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
         request.set_payload("id|type|msg|ts".as_bytes().to_vec());
@@ -161,8 +163,8 @@ mod test {
 
     #[test]
     fn generated_address_is_70_bytes_in_size() {
-        let handler = Handler::new();
-        let message = Message {
+        let handler = AlicaMessageTransactionHandler::new();
+        let message = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message: String::from("message").as_bytes().to_vec(),
@@ -176,30 +178,30 @@ mod test {
 
     #[test]
     fn generated_address_for_empty_message_is_70_bytes_in_size() {
-        let handler = Handler::new();
-        let message = Message {
+        let handler = AlicaMessageTransactionHandler::new();
+        let payload = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message: String::from("").as_bytes().to_vec(),
             timestamp: String::from("684984984984"),
         };
 
-        let address = handler.state_address_for(&message);
+        let address = handler.state_address_for(&payload);
 
         assert_eq!(address.as_bytes().len(), 70);
     }
 
     #[test]
     fn generated_address_starts_with_transaction_family_namespace() {
-        let handler = Handler::new();
-        let message = Message {
+        let handler = AlicaMessageTransactionHandler::new();
+        let payload = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message: String::from("").as_bytes().to_vec(),
             timestamp: String::from("684984984984"),
         };
 
-        let address = handler.state_address_for(&message);
+        let address = handler.state_address_for(&payload);
 
         let mut hasher = sha2::Sha512::new();
         hasher.update(handler.family_name());
@@ -210,10 +212,8 @@ mod test {
 
     #[test]
     fn apply_adds_non_existing_entry() {
-        let handler = Handler::new();
-
+        let handler = AlicaMessageTransactionHandler::new();
         let mut request = TpProcessRequest::new();
-
         let mut context = MockContext::new();
         context
             .expect_get_state_entries()
@@ -224,7 +224,7 @@ mod test {
             .times(1)
             .returning(|_entries| Ok(()));
 
-        let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+        let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
         request.set_payload("id|type|msg|ts".as_bytes().to_vec());
@@ -234,7 +234,7 @@ mod test {
 
     #[test]
     fn apply_fails_with_existing_entry() {
-        let handler = Handler::new();
+        let handler = AlicaMessageTransactionHandler::new();
 
         let mut request = TpProcessRequest::new();
         let mut context = MockContext::new();
@@ -251,7 +251,7 @@ mod test {
             });
         context.expect_set_state_entries().times(0);
 
-        let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+        let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
         request.set_payload("id|type|msg|ts".as_bytes().to_vec());
@@ -261,10 +261,8 @@ mod test {
 
     #[test]
     fn apply_fails_if_multiple_entries_exist() {
-        let handler = Handler::new();
-
+        let handler = AlicaMessageTransactionHandler::new();
         let mut request = TpProcessRequest::new();
-
         let mut context = MockContext::new();
         context
             .expect_get_state_entries()
@@ -279,7 +277,7 @@ mod test {
                 Ok(entries)
             });
 
-        let mut header = sawtooth_sdk::messages::transaction::TransactionHeader::new();
+        let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
         request.set_payload("id|type|msg|ts".as_bytes().to_vec());

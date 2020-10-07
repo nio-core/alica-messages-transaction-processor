@@ -3,16 +3,16 @@ use sawtooth_sdk::processor::handler::ApplyError;
 pub mod handler;
 
 #[derive(Debug)]
-pub struct Message {
+pub struct AlicaMessagePayload {
     agent_id: String,
     message_type: String,
     message: Vec<u8>,
     timestamp: String,
 }
 
-impl Message {
+impl AlicaMessagePayload {
     // payload syntax: agent_id|message_type|message|timestamp
-    pub fn from(bytes: Vec<u8>) -> Result<Message, ApplyError> {
+    pub fn from(bytes: Vec<u8>) -> Result<AlicaMessagePayload, ApplyError> {
         let payload = match String::from_utf8(bytes) {
             Ok(payload) => payload,
             Err(_e) => {
@@ -59,7 +59,7 @@ impl Message {
             }
         };
 
-        Ok(Message {
+        Ok(AlicaMessagePayload {
             agent_id: String::from(agent_id),
             message_type: String::from(message_type),
             message: message.as_bytes().to_vec(),
@@ -73,61 +73,78 @@ mod test {
     use super::*;
 
     #[test]
-    fn message_is_parsed_if_payload_is_valid() {
+    fn the_payload_is_valid_if_it_is_structured_properly() {
         let id = "id";
         let message_type = "type";
         let message_text = "msg";
         let timestamp = "ts";
 
-        let message_bytes = format!("{}|{}|{}|{}", id, message_type, message_text, timestamp)
+        let payload_bytes = format!("{}|{}|{}|{}", id, message_type, message_text, timestamp)
             .as_bytes()
             .to_vec();
 
-        let message = Message::from(message_bytes).expect("Error parsing payload");
+        let payload = AlicaMessagePayload::from(payload_bytes).expect("Error parsing payload");
 
-        assert_eq!(message.agent_id, id);
-        assert_eq!(message.message_type, message_type);
-        assert_eq!(message.message, message_text.as_bytes().to_vec());
-        assert_eq!(message.timestamp, timestamp);
+        assert_eq!(payload.agent_id, id);
+        assert_eq!(payload.message_type, message_type);
+        assert_eq!(payload.message, message_text.as_bytes().to_vec());
+        assert_eq!(payload.timestamp, timestamp);
     }
 
     #[test]
-    fn message_is_not_parsed_if_payload_is_missing_a_timestamp() {
+    fn the_payload_is_not_valid_if_the_timestamp_is_missing() {
         let id = "id";
         let message_type = "type";
         let message_text = "msg";
 
-        let message_bytes = format!("{}|{}|{}", id, message_type, message_text)
+        let payload_bytes = format!("{}|{}|{}", id, message_type, message_text)
             .as_bytes()
             .to_vec();
 
-        Message::from(message_bytes).unwrap_err();
+        AlicaMessagePayload::from(payload_bytes).unwrap_err();
     }
 
     #[test]
-    fn message_is_not_parsed_if_payload_is_missing_a_timestamp_and_a_message() {
+    fn the_payload_is_not_valid_if_the_message_is_missing() {
         let id = "id";
         let message_type = "type";
+        let timestamp = "ts";
 
-        let message_bytes = format!("{}|{}", id, message_type).as_bytes().to_vec();
+        let payload_bytes = format!("{}|{}|{}", id, message_type, timestamp).as_bytes().to_vec();
 
-        Message::from(message_bytes).unwrap_err();
+        AlicaMessagePayload::from(payload_bytes).unwrap_err();
     }
 
     #[test]
-    fn message_is_not_parsed_if_payload_is_missing_a_timestamp_and_a_message_and_a_message_type(
+    fn the_payload_is_not_valid_if_the_message_type_is_missing(
     ) {
         let id = "id";
+        let message = "message";
+        let timestamp = "ts";
 
-        let message_bytes = format!("{}", id,).as_bytes().to_vec();
+        let payload_bytes = format!("{}|{}|{}", id, message, timestamp).as_bytes().to_vec();
 
-        Message::from(message_bytes).unwrap_err();
+        AlicaMessagePayload::from(payload_bytes).unwrap_err();
     }
+
+    #[test]
+    fn the_payload_is_valid_if_the_agent_id_is_missing() {
+        let message_type = "type";
+        let message_text = "msg";
+        let timestamp = "ts";
+
+        let payload_bytes = format!("{}|{}|{}", message_type, message_text, timestamp)
+            .as_bytes()
+            .to_vec();
+
+        AlicaMessagePayload::from(payload_bytes).unwrap_err();
+    }
+
 
     #[test]
     fn empty_message_is_not_parsed() {
-        let message_bytes = "".as_bytes().to_vec();
+        let payload_bytes = "".as_bytes().to_vec();
 
-        Message::from(message_bytes).unwrap_err();
+        AlicaMessagePayload::from(payload_bytes).unwrap_err();
     }
 }

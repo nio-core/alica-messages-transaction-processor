@@ -156,7 +156,7 @@ mod test {
         let mut header = TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
-        request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+        request.set_payload("id|type|msg|64984494984".as_bytes().to_vec());
 
         handler.apply(&request, &mut context).unwrap();
     }
@@ -168,7 +168,7 @@ mod test {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message_bytes: String::from("message").as_bytes().to_vec(),
-            timestamp: String::from("6876984987987989"),
+            timestamp: 6876984987987989,
         };
 
         let address = handler.state_address_for(&message);
@@ -183,7 +183,7 @@ mod test {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message_bytes: String::from("").as_bytes().to_vec(),
-            timestamp: String::from("684984984984"),
+            timestamp: 684984984984,
         };
 
         let address = handler.state_address_for(&payload);
@@ -198,7 +198,7 @@ mod test {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message_bytes: String::from("").as_bytes().to_vec(),
-            timestamp: String::from("684984984984"),
+            timestamp: 684984984984
         };
 
         let address = handler.state_address_for(&payload);
@@ -227,7 +227,7 @@ mod test {
         let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
-        request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+        request.set_payload("id|type|msg|498498498".as_bytes().to_vec());
 
         handler.apply(&request, &mut context).unwrap();
     }
@@ -254,7 +254,7 @@ mod test {
         let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
-        request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+        request.set_payload("id|type|msg|65494894949".as_bytes().to_vec());
 
         handler.apply(&request, &mut context).unwrap_err();
     }
@@ -280,7 +280,7 @@ mod test {
         let mut header = messages::transaction::TransactionHeader::new();
         header.set_signer_public_key(String::from("980490840984984"));
         request.set_header(header);
-        request.set_payload("id|type|msg|ts".as_bytes().to_vec());
+        request.set_payload("id|type|msg|89891819".as_bytes().to_vec());
 
         handler.apply(&request, &mut context).unwrap_err();
     }

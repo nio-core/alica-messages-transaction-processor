@@ -1,21 +1,24 @@
-use crate::payload::ParsingError::InvalidPayload;
+use crate::payload::ParsingError::{InvalidPayload, InvalidTimestamp};
 
 pub mod handler;
 
 pub mod payload {
     use std::fmt::{Display, Formatter, Result};
-    use crate::payload::ParsingError::InvalidPayload;
 
     #[derive(Debug)]
     pub enum ParsingError {
         InvalidPayload(String),
+        InvalidTimestamp,
     }
 
     impl Display for ParsingError {
         fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
-            match self {
-                InvalidPayload(message) => write!(formatter, "{}", message)
-            }
+            let message = match self {
+                ParsingError::InvalidPayload(message) => message,
+                ParsingError::InvalidTimestamp => "Payload contains invalid timestamp",
+            };
+
+            write!(formatter, "{}", message)
         }
     }
 }
@@ -25,39 +28,34 @@ pub struct AlicaMessagePayload {
     agent_id: String,
     message_type: String,
     message_bytes: Vec<u8>,
-    timestamp: String,
+    timestamp: u64,
 }
 
 impl AlicaMessagePayload {
     // payload syntax: agent_id|message_type|message|timestamp
     pub fn from(bytes: Vec<u8>) -> Result<AlicaMessagePayload, payload::ParsingError> {
-        let payload = String::from_utf8(bytes).map_err(|_| {
-            InvalidPayload("Failed to decode payload in UTF8".to_string())
-        })?;
+        let payload = String::from_utf8(bytes)
+            .map_err(|_| { InvalidPayload("Payload is no string".to_string()) })?;
 
         let mut content = payload.split("|");
-        let agent_id = content.next()
-            .ok_or(InvalidPayload("No agent ID supplied in payload!".to_string()))
-            .map(|ts| ts.to_string())?;
+        let part_count = content.clone().count();
 
-        let message_type = content.next()
-            .ok_or(InvalidPayload("No message type supplied in payload!".to_string()))
-            .map(|ts| ts.to_string())?;
+        if part_count != 4 {
+            Err(InvalidPayload("Payload needs to have exactly 4 parts".to_string()))
+        } else {
+            let agent_id = content.next().unwrap().to_string();
+            let message_type = content.next().unwrap().to_string();
+            let message_bytes = content.next().unwrap().as_bytes().to_vec();
+            let timestamp = content.next().unwrap().parse::<u64>()
+                .map_err(|_| InvalidTimestamp)?;
 
-        let message_bytes = content.next()
-            .ok_or(InvalidPayload("No message supplied in payload!".to_string()))
-            .map(|msg| msg.as_bytes().to_vec())?;
-
-        let timestamp = content.next()
-            .ok_or(InvalidPayload("No timestamp supplied in payload!".to_string()))
-            .map(|ts| ts.to_string())?;
-
-        Ok(AlicaMessagePayload {
-            agent_id,
-            message_type,
-            message_bytes,
-            timestamp,
-        })
+            Ok(AlicaMessagePayload {
+                agent_id,
+                message_type,
+                message_bytes,
+                timestamp,
+            })
+        }
     }
 }
 
@@ -70,7 +68,7 @@ mod test {
         let id = "id";
         let message_type = "type";
         let message_text = "msg";
-        let timestamp = "ts";
+        let timestamp = 684948894984u64;
 
         let payload_bytes = format!("{}|{}|{}|{}", id, message_type, message_text, timestamp)
             .as_bytes()
@@ -101,7 +99,7 @@ mod test {
     fn the_payload_is_not_valid_if_the_message_is_missing() {
         let id = "id";
         let message_type = "type";
-        let timestamp = "ts";
+        let timestamp = 6849849849u64;
 
         let payload_bytes = format!("{}|{}|{}", id, message_type, timestamp).as_bytes().to_vec();
 
@@ -113,7 +111,7 @@ mod test {
     ) {
         let id = "id";
         let message = "message";
-        let timestamp = "ts";
+        let timestamp = 9819849484984u64;
 
         let payload_bytes = format!("{}|{}|{}", id, message, timestamp).as_bytes().to_vec();
 
@@ -124,7 +122,7 @@ mod test {
     fn the_payload_is_valid_if_the_agent_id_is_missing() {
         let message_type = "type";
         let message_text = "msg";
-        let timestamp = "ts";
+        let timestamp = 649494894984u64;
 
         let payload_bytes = format!("{}|{}|{}", message_type, message_text, timestamp)
             .as_bytes()

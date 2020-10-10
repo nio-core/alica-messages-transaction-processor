@@ -3,7 +3,7 @@ use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::messages::transaction::TransactionHeader;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
 use sawtooth_sdk::processor::handler::ApplyError::{InvalidTransaction, InternalError};
-use crate::AlicaMessagePayload;
+use crate::payload::AlicaMessagePayload;
 
 #[derive(Debug)]
 pub struct AlicaMessageTransactionHandler {
@@ -68,7 +68,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
     ) -> Result<(), ApplyError> {
         println!("Transaction received from {}!", &request.get_header().get_signer_public_key()[..6]);
 
-        let payload_bytes = request.get_payload().to_vec();
+        let payload_bytes = request.get_payload();
         let payload = AlicaMessagePayload::from(payload_bytes).map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);

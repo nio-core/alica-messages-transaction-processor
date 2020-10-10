@@ -30,23 +30,21 @@ impl AlicaMessageTransactionHandler {
     fn state_address_for(&self, payload: &AlicaMessagePayload) -> String {
         let mut hasher = Sha512::new();
         hasher.update(format!("{}{}{}", &payload.agent_id, &payload.message_type, &payload.timestamp));
-        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize_reset());
+        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
 
         let namespace_part = self.family_namespaces[0].clone();
         format!("{}{}", namespace_part, &payload_part[..64])
     }
 
-    fn store_message_at(&self, message: &[u8], state_address: &str, context: &mut dyn TransactionContext)
-        -> Result<(), ApplyError> {
+    fn store_message_at(&self, message_bytes: &[u8], state_address: &str, context: &mut dyn TransactionContext)
+                        -> Result<(), ApplyError> {
         let destination_address = String::from(state_address);
-        let message_bytes = message.to_vec();
-        match context.set_state_entries(vec![(destination_address, message_bytes)]) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(ApplyError::InternalError(format!(
+        let data = message_bytes.to_vec();
+        context.set_state_entries(vec![(destination_address, data)])
+            .map_err(|e| ApplyError::InternalError(format!(
                 "Internal error while trying to access state address {}. Error was {}",
                 state_address, e
             )))
-        }
     }
 }
 
@@ -68,35 +66,20 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         request: &TpProcessRequest,
         context: &mut dyn TransactionContext,
     ) -> Result<(), ApplyError> {
-        println!(
-            "Transaction received from {}!",
-            &request.get_header().get_signer_public_key()[..6]
-        );
+        println!("Transaction received from {}!", &request.get_header().get_signer_public_key()[..6]);
 
         let payload_bytes = request.get_payload().to_vec();
-        let payload = match AlicaMessagePayload::from(payload_bytes) {
-            Ok(payload) => Ok(payload),
-            Err(e) => Err(InvalidTransaction(format!("Error parsing payload: {}", e)))
-        }?;
+        let payload = AlicaMessagePayload::from(payload_bytes).map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);
-        let state_entries = match context.get_state_entries(&vec![transaction_address.clone()][..]) {
-            Ok(entries) => Ok(entries),
-            Err(e) => Err(InternalError(
-                    format!("Internal error while trying to access state address {}. Error was {}",
-                            &transaction_address, e)))
-        }?;
+        let state_entries = context.get_state_entries(&vec![transaction_address.clone()][..])
+            .map_err(|e| InternalError(format!("Internal error while trying to access state address {}. Error was {}", &transaction_address, e)))?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {
-            0 => self.store_message_at(
-                &payload.message_bytes,
-                transaction_address.as_str(),
-                context
-            ),
-            1 => Err(InvalidTransaction(format!("Message with address {} already exists", &transaction_address))),
-            _ => Err(InternalError(format!("Inconsistent state detected: address {} refers to {} entries",
-                                           &transaction_address, state_entry_count)))
+            0 => self.store_message_at(&payload.message_bytes, transaction_address.as_str(), context),
+            1 => Err(InternalError(format!("Message with address {} already exists", &transaction_address))),
+            _ => Err(InternalError(format!("Inconsistent state detected: address {} refers to {} entries", &transaction_address, state_entry_count)))
         }
     }
 }

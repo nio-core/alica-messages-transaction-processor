@@ -24,44 +24,39 @@ pub mod payload {
 pub struct AlicaMessagePayload {
     agent_id: String,
     message_type: String,
-    message: Vec<u8>,
+    message_bytes: Vec<u8>,
     timestamp: String,
 }
 
 impl AlicaMessagePayload {
     // payload syntax: agent_id|message_type|message|timestamp
     pub fn from(bytes: Vec<u8>) -> Result<AlicaMessagePayload, payload::ParsingError> {
-        let payload = match String::from_utf8(bytes) {
-            Ok(payload) => Ok(payload),
-            Err(_) => Err(InvalidPayload(String::from("Failed to decode payload in UTF8")))
-        }?;
+        let payload = String::from_utf8(bytes).map_err(|_| {
+            InvalidPayload("Failed to decode payload in UTF8".to_string())
+        })?;
 
         let mut content = payload.split("|");
-        let agent_id = match content.next() {
-            Some(id) => Ok(String::from(id)),
-            None => Err(InvalidPayload(String::from("No agent ID supplied in payload!")))
-        };
+        let agent_id = content.next()
+            .ok_or(InvalidPayload("No agent ID supplied in payload!".to_string()))
+            .map(|ts| ts.to_string())?;
 
-        let message_type = match content.next() {
-            Some(t) => Ok(String::from(t)),
-            None => Err(InvalidPayload(String::from("No message type supplied in payload!")))
-        };
+        let message_type = content.next()
+            .ok_or(InvalidPayload("No message type supplied in payload!".to_string()))
+            .map(|ts| ts.to_string())?;
 
-        let message = match content.next() {
-            Some(m) => Ok(String::from(m)),
-            None => Err(InvalidPayload(String::from("No message supplied in payload!")))
-        };
+        let message_bytes = content.next()
+            .ok_or(InvalidPayload("No message supplied in payload!".to_string()))
+            .map(|msg| msg.as_bytes().to_vec())?;
 
-        let timestamp = match content.next() {
-            Some(t) => Ok(String::from(t)),
-            None => Err(InvalidPayload(String::from("No timestamp supplied in payload!")))
-        };
+        let timestamp = content.next()
+            .ok_or(InvalidPayload("No timestamp supplied in payload!".to_string()))
+            .map(|ts| ts.to_string())?;
 
         Ok(AlicaMessagePayload {
-            agent_id: agent_id?,
-            message_type: message_type?,
-            message: message?.as_bytes().to_vec(),
-            timestamp: timestamp?,
+            agent_id,
+            message_type,
+            message_bytes,
+            timestamp,
         })
     }
 }
@@ -85,7 +80,7 @@ mod test {
 
         assert_eq!(payload.agent_id, id);
         assert_eq!(payload.message_type, message_type);
-        assert_eq!(payload.message, message_text.as_bytes().to_vec());
+        assert_eq!(payload.message_bytes, message_text.as_bytes().to_vec());
         assert_eq!(payload.timestamp, timestamp);
     }
 

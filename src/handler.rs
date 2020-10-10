@@ -90,7 +90,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         let state_entry_count = state_entries.len();
         match state_entry_count {
             0 => self.store_message_at(
-                &payload.message,
+                &payload.message_bytes,
                 transaction_address.as_str(),
                 context
             ),
@@ -167,7 +167,7 @@ mod test {
         let message = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
-            message: String::from("message").as_bytes().to_vec(),
+            message_bytes: String::from("message").as_bytes().to_vec(),
             timestamp: String::from("6876984987987989"),
         };
 
@@ -182,7 +182,7 @@ mod test {
         let payload = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
-            message: String::from("").as_bytes().to_vec(),
+            message_bytes: String::from("").as_bytes().to_vec(),
             timestamp: String::from("684984984984"),
         };
 
@@ -197,7 +197,7 @@ mod test {
         let payload = AlicaMessagePayload {
             agent_id: String::from("id"),
             message_type: String::from("type"),
-            message: String::from("").as_bytes().to_vec(),
+            message_bytes: String::from("").as_bytes().to_vec(),
             timestamp: String::from("684984984984"),
         };
 

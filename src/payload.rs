@@ -2,6 +2,12 @@ use crate::payload;
 use crate::payload::ParsingError::{InvalidPayload, InvalidTimestamp};
 use std::fmt::{Debug, Display, Formatter, Result};
 
+pub type ParsingResult<T> = std::result::Result<T, payload::ParsingError>;
+
+pub trait Parser {
+    fn parse(bytes: &[u8]) -> ParsingResult<AlicaMessagePayload>;
+}
+
 #[derive(Debug)]
 pub enum ParsingError {
     InvalidPayload(String),
@@ -19,8 +25,6 @@ impl Display for ParsingError {
     }
 }
 
-pub type ParsingResult<T> = std::result::Result<T, payload::ParsingError>;
-
 #[derive(Debug)]
 pub struct AlicaMessagePayload {
     pub agent_id: String,
@@ -29,21 +33,20 @@ pub struct AlicaMessagePayload {
     pub timestamp: u64,
 }
 
-impl AlicaMessagePayload {
+impl Parser for AlicaMessagePayload {
     // payload syntax: agent_id|message_type|message|timestamp
-    const REQUIRED_PAYLOAD_PART_COUNT: i32 = 4;
-
-    pub fn from(bytes: &[u8]) -> ParsingResult<AlicaMessagePayload> {
+    fn parse(bytes: &[u8]) -> ParsingResult<AlicaMessagePayload> {
+        let required_payload_part_count = 4;
         let payload = String::from_utf8(bytes.to_vec())
             .map_err(|_| InvalidPayload("Payload is no string".to_string()))?;
 
         let mut content = payload.split("|");
         let part_count = content.clone().count() as i32;
 
-        if part_count != AlicaMessagePayload::REQUIRED_PAYLOAD_PART_COUNT {
+        if part_count != required_payload_part_count {
             Err(InvalidPayload(format!(
                 "Payload needs to have exactly {} parts",
-                AlicaMessagePayload::REQUIRED_PAYLOAD_PART_COUNT
+                required_payload_part_count
             )))
         } else {
             let agent_id = content.next().unwrap().to_string();
@@ -80,7 +83,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let payload = AlicaMessagePayload::from(&payload_bytes).expect("Error parsing payload");
+        let payload = AlicaMessagePayload::parse(&payload_bytes).expect("Error parsing payload");
 
         assert_eq!(payload.agent_id, id);
         assert_eq!(payload.message_type, message_type);
@@ -98,7 +101,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::from(&payload_bytes).unwrap_err();
+        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
     }
 
     #[test]
@@ -111,7 +114,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::from(&payload_bytes).unwrap_err();
+        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
     }
 
     #[test]
@@ -124,7 +127,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::from(&payload_bytes).unwrap_err();
+        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
     }
 
     #[test]
@@ -137,12 +140,12 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::from(&payload_bytes).unwrap_err();
+        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
     }
 
     #[test]
     fn empty_message_is_not_parsed() {
         let payload_bytes = "".as_bytes();
-        AlicaMessagePayload::from(payload_bytes).unwrap_err();
+        AlicaMessagePayload::parse(payload_bytes).unwrap_err();
     }
 }

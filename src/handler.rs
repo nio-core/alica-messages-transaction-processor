@@ -1,4 +1,7 @@
-use crate::{payload::AlicaMessagePayload, sawtooth};
+use crate::{
+    payload::{AlicaMessagePayload, Parser},
+    sawtooth,
+};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::{InternalError, InvalidTransaction};
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
@@ -69,7 +72,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         let sawtooth_interactor = sawtooth::Interactor::new(context);
 
         let payload_bytes = request.get_payload();
-        let payload = AlicaMessagePayload::from(payload_bytes)
+        let payload = AlicaMessagePayload::parse(payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);

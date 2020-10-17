@@ -1,76 +1,49 @@
-use crate::payload;
-use crate::payload::ParsingError::{InvalidPayload, InvalidTimestamp};
-use std::fmt::{Debug, Display, Formatter, Result};
+use super::{Parser, ParsingError, ParsingResult, Payload};
 
-pub type ParsingResult<T> = std::result::Result<T, payload::ParsingError>;
+pub struct PipeSeperatedPayloadParser {}
 
-pub trait Parser {
-    fn parse(bytes: &[u8]) -> ParsingResult<AlicaMessagePayload>;
-}
-
-#[derive(Debug)]
-pub enum ParsingError {
-    InvalidPayload(String),
-    InvalidTimestamp,
-}
-
-impl Display for ParsingError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
-        let message = match self {
-            ParsingError::InvalidPayload(message) => message,
-            ParsingError::InvalidTimestamp => "Payload contains invalid timestamp",
-        };
-
-        write!(formatter, "{}", message)
+impl PipeSeperatedPayloadParser {
+    pub fn new() -> Self {
+        PipeSeperatedPayloadParser {}
     }
 }
 
-#[derive(Debug)]
-pub struct AlicaMessagePayload {
-    pub agent_id: String,
-    pub message_type: String,
-    pub message_bytes: Vec<u8>,
-    pub timestamp: u64,
-}
-
-impl Parser for AlicaMessagePayload {
-    // payload syntax: agent_id|message_type|message|timestamp
-    fn parse(bytes: &[u8]) -> ParsingResult<AlicaMessagePayload> {
+impl Parser for PipeSeperatedPayloadParser {
+    fn parse(&self, bytes: &[u8]) -> ParsingResult<Payload> {
         let required_payload_part_count = 4;
         let payload = String::from_utf8(bytes.to_vec())
-            .map_err(|_| InvalidPayload("Payload is no string".to_string()))?;
+            .map_err(|_| ParsingError::InvalidPayload("Payload is no string".to_string()))?;
 
         let mut content = payload.split("|");
         let part_count = content.clone().count() as i32;
 
         if part_count != required_payload_part_count {
-            Err(InvalidPayload(format!(
+            Err(ParsingError::InvalidPayload(format!(
                 "Payload needs to have exactly {} parts",
                 required_payload_part_count
             )))
         } else {
-            let agent_id = content.next().unwrap().to_string();
-            let message_type = content.next().unwrap().to_string();
-            let message_bytes = content.next().unwrap().as_bytes().to_vec();
+            let agent_id = content.next().unwrap();
+            let message_type = content.next().unwrap();
+            let message_bytes = content.next().unwrap().as_bytes();
             let timestamp = content
                 .next()
                 .unwrap()
                 .parse::<u64>()
-                .map_err(|_| InvalidTimestamp)?;
+                .map_err(|_| ParsingError::InvalidTimestamp)?;
 
-            Ok(AlicaMessagePayload {
-                agent_id,
-                message_type,
-                message_bytes,
-                timestamp,
-            })
+            let payload = Payload::new(agent_id, message_type, message_bytes, timestamp);
+
+            Ok(payload)
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use crate::payload::Parser;
+
+    use super::PipeSeperatedPayloadParser;
 
     #[test]
     fn the_payload_is_valid_if_it_is_structured_properly() {
@@ -83,7 +56,9 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let payload = AlicaMessagePayload::parse(&payload_bytes).expect("Error parsing payload");
+        let payload = PipeSeperatedPayloadParser::new()
+            .parse(&payload_bytes)
+            .expect("Error parsing payload");
 
         assert_eq!(payload.agent_id, id);
         assert_eq!(payload.message_type, message_type);
@@ -101,7 +76,9 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
+        assert!(PipeSeperatedPayloadParser::new()
+            .parse(&payload_bytes)
+            .is_err())
     }
 
     #[test]
@@ -114,7 +91,9 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
+        assert!(PipeSeperatedPayloadParser::new()
+            .parse(&payload_bytes)
+            .is_err())
     }
 
     #[test]
@@ -127,7 +106,9 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
+        assert!(PipeSeperatedPayloadParser::new()
+            .parse(&payload_bytes)
+            .is_err())
     }
 
     #[test]
@@ -140,12 +121,16 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        AlicaMessagePayload::parse(&payload_bytes).unwrap_err();
+        assert!(PipeSeperatedPayloadParser::new()
+            .parse(&payload_bytes)
+            .is_err())
     }
 
     #[test]
     fn empty_message_is_not_parsed() {
         let payload_bytes = "".as_bytes();
-        AlicaMessagePayload::parse(payload_bytes).unwrap_err();
+        assert!(PipeSeperatedPayloadParser::new()
+            .parse(payload_bytes)
+            .is_err())
     }
 }

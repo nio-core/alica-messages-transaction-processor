@@ -1,13 +1,11 @@
-use crate::{
-    payload::{AlicaMessagePayload, Parser},
-    sawtooth,
-};
+use crate::{payload::Payload, sawtooth};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::{InternalError, InvalidTransaction};
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
 use sha2::{Digest, Sha512};
 
-#[derive(Debug)]
+use crate::payload::{parser::PipeSeperatedPayloadParser, Parser};
+
 pub struct AlicaMessageTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
@@ -29,11 +27,11 @@ impl AlicaMessageTransactionHandler {
         }
     }
 
-    fn state_address_for(&self, payload: &AlicaMessagePayload) -> String {
+    fn state_address_for(&self, payload: &Payload) -> String {
         let mut hasher = Sha512::new();
         hasher.update(format!(
             "{}{}{}",
-            &payload.agent_id, &payload.message_type, &payload.timestamp
+            payload.agent_id, payload.message_type, payload.timestamp
         ));
 
         let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
@@ -70,9 +68,11 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         );
 
         let sawtooth_interactor = sawtooth::Interactor::new(context);
+        let payload_parser = PipeSeperatedPayloadParser::new();
 
         let payload_bytes = request.get_payload();
-        let payload = AlicaMessagePayload::parse(payload_bytes)
+        let payload = payload_parser
+            .parse(payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);
@@ -96,11 +96,14 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use crate::handler::AlicaMessageTransactionHandler;
+    use crate::payload::Payload;
+
     use sawtooth_sdk::messages;
     use sawtooth_sdk::messages::processor::TpProcessRequest;
     use sawtooth_sdk::messages::transaction::TransactionHeader;
     use sawtooth_sdk::processor::handler::{ContextError, TransactionContext, TransactionHandler};
+    use sha2::Digest;
 
     mockall::mock! {
         pub Context {}
@@ -156,14 +159,9 @@ mod test {
     #[test]
     fn generated_address_is_70_bytes_in_size() {
         let handler = AlicaMessageTransactionHandler::new();
-        let message = AlicaMessagePayload {
-            agent_id: String::from("id"),
-            message_type: String::from("type"),
-            message_bytes: String::from("message").as_bytes().to_vec(),
-            timestamp: 6876984987987989,
-        };
+        let payload = Payload::new("id", "type", "message".as_bytes(), 6876984987987989);
 
-        let address = handler.state_address_for(&message);
+        let address = handler.state_address_for(&payload);
 
         assert_eq!(address.as_bytes().len(), 70);
     }
@@ -171,12 +169,7 @@ mod test {
     #[test]
     fn generated_address_for_empty_message_is_70_bytes_in_size() {
         let handler = AlicaMessageTransactionHandler::new();
-        let payload = AlicaMessagePayload {
-            agent_id: String::from("id"),
-            message_type: String::from("type"),
-            message_bytes: String::from("").as_bytes().to_vec(),
-            timestamp: 684984984984,
-        };
+        let payload = Payload::new("id", "type", "".as_bytes(), 6876984987987989);
 
         let address = handler.state_address_for(&payload);
 
@@ -186,12 +179,7 @@ mod test {
     #[test]
     fn generated_address_starts_with_transaction_family_namespace() {
         let handler = AlicaMessageTransactionHandler::new();
-        let payload = AlicaMessagePayload {
-            agent_id: String::from("id"),
-            message_type: String::from("type"),
-            message_bytes: String::from("").as_bytes().to_vec(),
-            timestamp: 684984984984,
-        };
+        let payload = Payload::new("id", "type", "message".as_bytes(), 6876984987987989);
 
         let address = handler.state_address_for(&payload);
 

@@ -1,4 +1,4 @@
-use crate::payload::AlicaMessagePayload;
+use crate::{payload::AlicaMessagePayload, sawtooth};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::{InternalError, InvalidTransaction};
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
@@ -41,39 +41,6 @@ impl AlicaMessageTransactionHandler {
             first_6_bytes_of_namespace_checksum, first_64_bytes_of_payload_checksum
         )
     }
-
-    fn store_message_at(
-        &self,
-        message_bytes: &[u8],
-        state_address: &str,
-        context: &mut dyn TransactionContext,
-    ) -> Result<(), ApplyError> {
-        let destination_address = String::from(state_address);
-        let data = message_bytes.to_vec();
-        context
-            .set_state_entries(vec![(destination_address, data)])
-            .map_err(|e| {
-                ApplyError::InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    state_address, e
-                ))
-            })
-    }
-
-    fn get_state_entries_for(
-        &self,
-        state_address: &str,
-        context: &mut dyn TransactionContext,
-    ) -> Result<Vec<(String, Vec<u8>)>, ApplyError> {
-        context
-            .get_state_entries(&vec![state_address.to_string()])
-            .map_err(|e| {
-                InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    &state_address, e
-                ))
-            })
-    }
 }
 
 impl TransactionHandler for AlicaMessageTransactionHandler {
@@ -99,20 +66,19 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
             &request.get_header().get_signer_public_key()[..6]
         );
 
+        let sawtooth_interactor = sawtooth::Interactor::new(context);
+
         let payload_bytes = request.get_payload();
         let payload = AlicaMessagePayload::from(payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);
-        let state_entries = self.get_state_entries_for(&transaction_address, context)?;
+        let state_entries = sawtooth_interactor.get_state_entries_for(&transaction_address)?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {
-            0 => self.store_message_at(
-                &payload.message_bytes,
-                transaction_address.as_str(),
-                context,
-            ),
+            0 => sawtooth_interactor
+                .store_state_entry((transaction_address.as_str(), &payload.message_bytes)),
             1 => Err(InternalError(format!(
                 "Message with address {} already exists",
                 &transaction_address

@@ -14,7 +14,9 @@ fn main() {
         )
         .get_matches();
 
-    let validator_url = args.value_of("connect").expect("Missing validator address!");
+    let validator_url = args
+        .value_of("connect")
+        .expect("Missing validator address!");
 
     let alica_message_transaction_handler = AlicaMessageTransactionHandler::new();
     let mut processor = sawtooth_sdk::processor::TransactionProcessor::new(validator_url);

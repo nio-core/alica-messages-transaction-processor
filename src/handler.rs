@@ -1,9 +1,8 @@
-use sha2::{Sha512, Digest};
-use sawtooth_sdk::messages::processor::TpProcessRequest;
-use sawtooth_sdk::messages::transaction::TransactionHeader;
-use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
-use sawtooth_sdk::processor::handler::ApplyError::{InvalidTransaction, InternalError};
 use crate::payload::AlicaMessagePayload;
+use sawtooth_sdk::messages::processor::TpProcessRequest;
+use sawtooth_sdk::processor::handler::ApplyError::{InternalError, InvalidTransaction};
+use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
+use sha2::{Digest, Sha512};
 
 #[derive(Debug)]
 pub struct AlicaMessageTransactionHandler {
@@ -29,22 +28,51 @@ impl AlicaMessageTransactionHandler {
 
     fn state_address_for(&self, payload: &AlicaMessagePayload) -> String {
         let mut hasher = Sha512::new();
-        hasher.update(format!("{}{}{}", &payload.agent_id, &payload.message_type, &payload.timestamp));
-        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
+        hasher.update(format!(
+            "{}{}{}",
+            &payload.agent_id, &payload.message_type, &payload.timestamp
+        ));
 
-        let namespace_part = self.family_namespaces[0].clone();
-        format!("{}{}", namespace_part, &payload_part[..64])
+        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
+        let first_64_bytes_of_payload_checksum = &payload_part[..64];
+        let first_6_bytes_of_namespace_checksum = &self.family_namespaces[0];
+        format!(
+            "{}{}",
+            first_6_bytes_of_namespace_checksum, first_64_bytes_of_payload_checksum
+        )
     }
 
-    fn store_message_at(&self, message_bytes: &[u8], state_address: &str, context: &mut dyn TransactionContext)
-                        -> Result<(), ApplyError> {
+    fn store_message_at(
+        &self,
+        message_bytes: &[u8],
+        state_address: &str,
+        context: &mut dyn TransactionContext,
+    ) -> Result<(), ApplyError> {
         let destination_address = String::from(state_address);
         let data = message_bytes.to_vec();
-        context.set_state_entries(vec![(destination_address, data)])
-            .map_err(|e| ApplyError::InternalError(format!(
-                "Internal error while trying to access state address {}. Error was {}",
-                state_address, e
-            )))
+        context
+            .set_state_entries(vec![(destination_address, data)])
+            .map_err(|e| {
+                ApplyError::InternalError(format!(
+                    "Internal error while trying to access state address {}. Error was {}",
+                    state_address, e
+                ))
+            })
+    }
+
+    fn get_state_entries_for(
+        &self,
+        state_address: &str,
+        context: &mut dyn TransactionContext,
+    ) -> Result<Vec<(String, Vec<u8>)>, ApplyError> {
+        context
+            .get_state_entries(&vec![state_address.to_string()])
+            .map_err(|e| {
+                InternalError(format!(
+                    "Internal error while trying to access state address {}. Error was {}",
+                    &state_address, e
+                ))
+            })
     }
 }
 
@@ -66,20 +94,33 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         request: &TpProcessRequest,
         context: &mut dyn TransactionContext,
     ) -> Result<(), ApplyError> {
-        println!("Transaction received from {}!", &request.get_header().get_signer_public_key()[..6]);
+        println!(
+            "Transaction received from {}!",
+            &request.get_header().get_signer_public_key()[..6]
+        );
 
         let payload_bytes = request.get_payload();
-        let payload = AlicaMessagePayload::from(payload_bytes).map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
+        let payload = AlicaMessagePayload::from(payload_bytes)
+            .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
 
         let transaction_address = self.state_address_for(&payload);
-        let state_entries = context.get_state_entries(&vec![transaction_address.clone()][..])
-            .map_err(|e| InternalError(format!("Internal error while trying to access state address {}. Error was {}", &transaction_address, e)))?;
+        let state_entries = self.get_state_entries_for(&transaction_address, context)?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {
-            0 => self.store_message_at(&payload.message_bytes, transaction_address.as_str(), context),
-            1 => Err(InternalError(format!("Message with address {} already exists", &transaction_address))),
-            _ => Err(InternalError(format!("Inconsistent state detected: address {} refers to {} entries", &transaction_address, state_entry_count)))
+            0 => self.store_message_at(
+                &payload.message_bytes,
+                transaction_address.as_str(),
+                context,
+            ),
+            1 => Err(InternalError(format!(
+                "Message with address {} already exists",
+                &transaction_address
+            ))),
+            _ => Err(InternalError(format!(
+                "Inconsistent state detected: address {} refers to {} entries",
+                &transaction_address, state_entry_count
+            ))),
         }
     }
 }
@@ -87,23 +128,22 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 #[cfg(test)]
 mod test {
     use super::*;
-    use sawtooth_sdk::messages::processor::TpProcessRequest;
-    use sawtooth_sdk::processor::handler::{
-        ContextError, TransactionContext, TransactionHandler,
-    };
     use sawtooth_sdk::messages;
+    use sawtooth_sdk::messages::processor::TpProcessRequest;
+    use sawtooth_sdk::messages::transaction::TransactionHeader;
+    use sawtooth_sdk::processor::handler::{ContextError, TransactionContext, TransactionHandler};
 
     mockall::mock! {
-            pub Context {}
+        pub Context {}
 
-            trait TransactionContext {
-                fn get_state_entries(&self, address: &[String]) -> Result<Vec<(String, Vec<u8>)>, ContextError>;
-                fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError>;
-                fn delete_state_entries(&self, address: &[String]) -> Result<Vec<String>, ContextError>;
-                fn add_receipt_data(&self, data: &[u8]) -> Result<(), ContextError>;
-                fn add_event(&self, address: String, entries: Vec<(String, String)>, data: &[u8]) -> Result<(), ContextError>;
-            }
+        trait TransactionContext {
+            fn get_state_entries(&self, address: &[String]) -> Result<Vec<(String, Vec<u8>)>, ContextError>;
+            fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError>;
+            fn delete_state_entries(&self, address: &[String]) -> Result<Vec<String>, ContextError>;
+            fn add_receipt_data(&self, data: &[u8]) -> Result<(), ContextError>;
+            fn add_event(&self, address: String, entries: Vec<(String, String)>, data: &[u8]) -> Result<(), ContextError>;
         }
+    }
 
     #[test]
     fn apply_with_invalid_utf8_payload_fails_with_apply_error() {
@@ -181,7 +221,7 @@ mod test {
             agent_id: String::from("id"),
             message_type: String::from("type"),
             message_bytes: String::from("").as_bytes().to_vec(),
-            timestamp: 684984984984
+            timestamp: 684984984984,
         };
 
         let address = handler.state_address_for(&payload);

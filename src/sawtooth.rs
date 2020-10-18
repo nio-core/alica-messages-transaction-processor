@@ -12,19 +12,6 @@ impl<'a> Interactor<'a> {
         Interactor { context }
     }
 
-    pub fn store_state_entry(&self, state_entry: (&str, &[u8])) -> Result<(), ApplyError> {
-        let destination_address = String::from(state_entry.0);
-        let data = state_entry.1.to_vec();
-        self.context
-            .set_state_entries(vec![(destination_address, data)])
-            .map_err(|e| {
-                ApplyError::InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    state_entry.0, e
-                ))
-            })
-    }
-
     pub fn fetch_state_entries_for(
         &self,
         state_address: &str,
@@ -35,6 +22,36 @@ impl<'a> Interactor<'a> {
                 InternalError(format!(
                     "Internal error while trying to access state address {}. Error was {}",
                     &state_address, e
+                ))
+            })
+    }
+
+    pub fn create_state_entry(&self, state_address: &str, data: &[u8]) -> Result<(), ApplyError> {
+        let state_entries = self.fetch_state_entries_for(&state_address)?;
+
+        let state_entry_count = state_entries.len();
+        match state_entry_count {
+            0 => self.store_state_entry((state_address, data)),
+            1 => Err(InternalError(format!(
+                "Message with address {} already exists",
+                state_address
+            ))),
+            _ => Err(InternalError(format!(
+                "Inconsistent state detected: address {} refers to {} entries",
+                state_address, state_entry_count
+            ))),
+        }
+    }
+
+    fn store_state_entry(&self, state_entry: (&str, &[u8])) -> Result<(), ApplyError> {
+        let destination_address = String::from(state_entry.0);
+        let data = state_entry.1.to_vec();
+        self.context
+            .set_state_entries(vec![(destination_address, data)])
+            .map_err(|e| {
+                ApplyError::InternalError(format!(
+                    "Internal error while trying to access state address {}. Error was {}",
+                    state_entry.0, e
                 ))
             })
     }

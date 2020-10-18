@@ -1,8 +1,7 @@
-use crate::{payload::Payload, sawtooth};
+use crate::{payload::Payload, sawtooth, util};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
-use sawtooth_sdk::processor::handler::ApplyError::{InternalError, InvalidTransaction};
+use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
-use sha2::{Digest, Sha512};
 
 use crate::payload::{parser::PipeSeperatedPayloadParser, Parser};
 
@@ -15,15 +14,12 @@ pub struct AlicaMessageTransactionHandler {
 impl AlicaMessageTransactionHandler {
     pub fn new() -> Self {
         let family_name = "alica_messages";
-        let mut hasher = Sha512::new();
-        hasher.update(family_name);
-        let result = hasher.finalize();
-        let encoded_result = data_encoding::HEXLOWER.encode(&result);
+        let family_name_hash = util::hash(family_name);
 
         AlicaMessageTransactionHandler {
             family_name: String::from(family_name),
             family_versions: vec![String::from("0.1.0")],
-            family_namespaces: vec![String::from(&encoded_result[..6])],
+            family_namespaces: vec![String::from(&family_name_hash[..6])],
         }
     }
 
@@ -35,15 +31,15 @@ impl AlicaMessageTransactionHandler {
     }
 
     fn state_address_for(&self, payload: &Payload) -> String {
-        let mut hasher = Sha512::new();
-        hasher.update(format!(
+        let payload = format!(
             "{}{}{}",
             payload.agent_id, payload.message_type, payload.timestamp
-        ));
+        );
+        let payload_part = util::hash(&payload);
 
-        let payload_part = data_encoding::HEXLOWER.encode(&hasher.finalize());
         let first_64_bytes_of_payload_checksum = &payload_part[..64];
         let first_6_bytes_of_namespace_checksum = &self.family_namespaces[0];
+
         format!(
             "{}{}",
             first_6_bytes_of_namespace_checksum, first_64_bytes_of_payload_checksum
@@ -74,40 +70,24 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
             &request.get_header().get_signer_public_key()[..6]
         );
 
-        let sawtooth_interactor = sawtooth::Interactor::new(context);
-
         let payload_bytes = request.get_payload();
         let payload = self.parse(payload_bytes)?;
 
         let transaction_address = self.state_address_for(&payload);
-        let state_entries = sawtooth_interactor.fetch_state_entries_for(&transaction_address)?;
-
-        let state_entry_count = state_entries.len();
-        match state_entry_count {
-            0 => sawtooth_interactor
-                .store_state_entry((transaction_address.as_str(), &payload.message_bytes)),
-            1 => Err(InternalError(format!(
-                "Message with address {} already exists",
-                &transaction_address
-            ))),
-            _ => Err(InternalError(format!(
-                "Inconsistent state detected: address {} refers to {} entries",
-                &transaction_address, state_entry_count
-            ))),
-        }
+        let sawtooth_interactor = sawtooth::Interactor::new(context);
+        sawtooth_interactor.create_state_entry(&transaction_address, &payload.message_bytes)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::handler::AlicaMessageTransactionHandler;
     use crate::payload::Payload;
+    use crate::{handler::AlicaMessageTransactionHandler, util};
 
     use sawtooth_sdk::messages;
     use sawtooth_sdk::messages::processor::TpProcessRequest;
     use sawtooth_sdk::messages::transaction::TransactionHeader;
     use sawtooth_sdk::processor::handler::{ContextError, TransactionContext, TransactionHandler};
-    use sha2::Digest;
 
     mockall::mock! {
         pub Context {}
@@ -187,10 +167,7 @@ mod test {
 
         let address = handler.state_address_for(&payload);
 
-        let mut hasher = sha2::Sha512::new();
-        hasher.update(handler.family_name());
-        let namespace = data_encoding::HEXLOWER.encode(&hasher.finalize()[..]);
-
+        let namespace = util::hash(&handler.family_name());
         assert!(address.starts_with(&namespace[..6]))
     }
 

@@ -1,9 +1,9 @@
-use crate::{payload::Payload, sawtooth, util};
+use crate::{payload::TransactionPayload, sawtooth, util};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
 
-use crate::payload::{parser::PipeSeperatedPayloadParser, Parser};
+use crate::payload::{parser::PipeSeparatedPayloadParser, Parser};
 
 pub struct AlicaMessageTransactionHandler {
     family_name: String,
@@ -23,21 +23,25 @@ impl AlicaMessageTransactionHandler {
         }
     }
 
-    fn parse_pipe_seperated(&self, payload_bytes: &[u8]) -> Result<Payload, ApplyError> {
-        let payload_parser = PipeSeperatedPayloadParser::new();
-        payload_parser
-            .parse(payload_bytes)
+    fn parse_pipe_separated(
+        &self,
+        transaction_payload_bytes: &[u8],
+    ) -> Result<TransactionPayload, ApplyError> {
+        PipeSeparatedPayloadParser::new()
+            .parse(transaction_payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))
     }
 
-    fn state_address_for(&self, payload: &Payload) -> String {
-        let payload = format!(
+    fn state_address_for(&self, transaction_payload: &TransactionPayload) -> String {
+        let payload_part_of_state_address = format!(
             "{}{}{}",
-            payload.agent_id, payload.message_type, payload.timestamp
+            transaction_payload.agent_id,
+            transaction_payload.message_type,
+            transaction_payload.timestamp
         );
-        let payload_part = util::hash(&payload);
+        let payload_checksum = util::hash(&payload_part_of_state_address);
 
-        let first_64_bytes_of_payload_checksum = &payload_part[..64];
+        let first_64_bytes_of_payload_checksum = &payload_checksum[..64];
         let first_6_bytes_of_namespace_checksum = &self.family_namespaces[0];
 
         format!(
@@ -70,18 +74,19 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
             &request.get_header().get_signer_public_key()[..6]
         );
 
-        let payload_bytes = request.get_payload();
-        let payload = self.parse_pipe_seperated(payload_bytes)?;
+        let transaction_payload_bytes = request.get_payload();
+        let transaction_payload = self.parse_pipe_separated(transaction_payload_bytes)?;
 
-        let transaction_address = self.state_address_for(&payload);
+        let transaction_address = self.state_address_for(&transaction_payload);
         let sawtooth_interactor = sawtooth::Interactor::new(context);
-        sawtooth_interactor.create_state_entry(&transaction_address, &payload.message_bytes)
+        sawtooth_interactor.create_state_entry(&transaction_address,
+                                               &transaction_payload.message_bytes)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::payload::Payload;
+    use crate::payload::TransactionPayload;
     use crate::{handler::AlicaMessageTransactionHandler, util};
 
     use sawtooth_sdk::messages;
@@ -143,7 +148,7 @@ mod test {
     #[test]
     fn generated_address_is_70_bytes_in_size() {
         let handler = AlicaMessageTransactionHandler::new();
-        let payload = Payload::new("id", "type", "message".as_bytes(), 6876984987987989);
+        let payload = TransactionPayload::new("id", "type", "message".as_bytes(), 6876984987987989);
 
         let address = handler.state_address_for(&payload);
 
@@ -153,7 +158,7 @@ mod test {
     #[test]
     fn generated_address_for_empty_message_is_70_bytes_in_size() {
         let handler = AlicaMessageTransactionHandler::new();
-        let payload = Payload::new("id", "type", "".as_bytes(), 6876984987987989);
+        let payload = TransactionPayload::new("id", "type", "".as_bytes(), 6876984987987989);
 
         let address = handler.state_address_for(&payload);
 
@@ -163,7 +168,7 @@ mod test {
     #[test]
     fn generated_address_starts_with_transaction_family_namespace() {
         let handler = AlicaMessageTransactionHandler::new();
-        let payload = Payload::new("id", "type", "message".as_bytes(), 6876984987987989);
+        let payload = TransactionPayload::new("id", "type", "message".as_bytes(), 6876984987987989);
 
         let address = handler.state_address_for(&payload);
 
@@ -230,9 +235,9 @@ mod test {
             .times(1)
             .returning(|addresses| {
                 let mut entries = Vec::new();
-                for addr in addresses {
-                    entries.push((addr.clone(), vec![0x0]));
-                    entries.push((addr.clone(), vec![0x1]));
+                for address in addresses {
+                    entries.push((address.clone(), vec![0x0]));
+                    entries.push((address.clone(), vec![0x1]));
                 }
 
                 Ok(entries)

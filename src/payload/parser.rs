@@ -1,19 +1,21 @@
-use super::{Parser, ParsingError, ParsingResult, Payload, PayloadValidator, ValidationResult};
+use super::{
+    Parser, ParsingError, ParsingResult, PayloadValidator, TransactionPayload, ValidationResult,
+};
 
-pub struct PipeSeperatedPayloadParser {
+pub struct PipeSeparatedPayloadParser {
     validator: Box<dyn PayloadValidator>,
 }
 
-impl PipeSeperatedPayloadParser {
+impl PipeSeparatedPayloadParser {
     pub fn new() -> Self {
-        PipeSeperatedPayloadParser {
-            validator: Box::from(PipeSeperatedPayloadValidator::new()),
+        PipeSeparatedPayloadParser {
+            validator: Box::from(PipeSeparatedPayloadValidator::new()),
         }
     }
 }
 
-impl Parser for PipeSeperatedPayloadParser {
-    fn parse(&self, bytes: &[u8]) -> ParsingResult<Payload> {
+impl Parser for PipeSeparatedPayloadParser {
+    fn parse(&self, bytes: &[u8]) -> ParsingResult<TransactionPayload> {
         self.validator.validate(&bytes)?;
 
         let payload = String::from_utf8(bytes.to_vec())
@@ -29,7 +31,7 @@ impl Parser for PipeSeperatedPayloadParser {
             .parse::<u64>()
             .map_err(|_| ParsingError::InvalidTimestamp)?;
 
-        Ok(Payload::new(
+        Ok(TransactionPayload::new(
             agent_id,
             message_type,
             message_bytes,
@@ -38,27 +40,27 @@ impl Parser for PipeSeperatedPayloadParser {
     }
 }
 
-pub struct PipeSeperatedPayloadValidator {}
+pub struct PipeSeparatedPayloadValidator {}
 
-impl PipeSeperatedPayloadValidator {
+impl PipeSeparatedPayloadValidator {
     pub const REQUIRED_PAYLOAD_PART_COUNT: u8 = 4;
 
     pub fn new() -> Self {
-        PipeSeperatedPayloadValidator {}
+        PipeSeparatedPayloadValidator {}
     }
 }
 
-impl PayloadValidator for PipeSeperatedPayloadValidator {
+impl PayloadValidator for PipeSeparatedPayloadValidator {
     fn validate(&self, payload_bytes: &[u8]) -> ValidationResult {
         let payload = String::from_utf8(payload_bytes.to_vec())
             .map_err(|_| ParsingError::InvalidPayload("Payload is no string".to_string()))?;
 
         let content = payload.split("|");
         let part_count = content.count() as u8;
-        if part_count != super::parser::PipeSeperatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT {
+        if part_count != super::parser::PipeSeparatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT {
             return Err(ParsingError::InvalidPayload(format!(
                 "Payload needs to have exactly {} parts",
-                super::parser::PipeSeperatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT
+                super::parser::PipeSeparatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT
             )));
         }
 
@@ -70,7 +72,7 @@ impl PayloadValidator for PipeSeperatedPayloadValidator {
 mod test {
     use crate::payload::Parser;
 
-    use super::PipeSeperatedPayloadParser;
+    use super::PipeSeparatedPayloadParser;
 
     #[test]
     fn the_payload_is_valid_if_it_is_structured_properly() {
@@ -83,7 +85,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        let payload = PipeSeperatedPayloadParser::new()
+        let payload = PipeSeparatedPayloadParser::new()
             .parse(&payload_bytes)
             .expect("Error parsing payload");
 
@@ -103,7 +105,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        assert!(PipeSeperatedPayloadParser::new()
+        assert!(PipeSeparatedPayloadParser::new()
             .parse(&payload_bytes)
             .is_err())
     }
@@ -118,7 +120,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        assert!(PipeSeperatedPayloadParser::new()
+        assert!(PipeSeparatedPayloadParser::new()
             .parse(&payload_bytes)
             .is_err())
     }
@@ -133,7 +135,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        assert!(PipeSeperatedPayloadParser::new()
+        assert!(PipeSeparatedPayloadParser::new()
             .parse(&payload_bytes)
             .is_err())
     }
@@ -148,7 +150,7 @@ mod test {
             .as_bytes()
             .to_vec();
 
-        assert!(PipeSeperatedPayloadParser::new()
+        assert!(PipeSeparatedPayloadParser::new()
             .parse(&payload_bytes)
             .is_err())
     }
@@ -156,7 +158,7 @@ mod test {
     #[test]
     fn empty_message_is_not_parsed() {
         let payload_bytes = "".as_bytes();
-        assert!(PipeSeperatedPayloadParser::new()
+        assert!(PipeSeparatedPayloadParser::new()
             .parse(payload_bytes)
             .is_err())
     }

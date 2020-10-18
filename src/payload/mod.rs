@@ -6,7 +6,7 @@ pub type ParsingResult<T> = std::result::Result<T, ParsingError>;
 pub type ValidationResult = std::result::Result<(), ParsingError>;
 
 pub trait Parser {
-    fn parse(&self, bytes: &[u8]) -> ParsingResult<Payload>;
+    fn parse(&self, bytes: &[u8]) -> ParsingResult<TransactionPayload>;
 }
 
 pub trait PayloadValidator {
@@ -30,16 +30,16 @@ impl Display for ParsingError {
     }
 }
 
-pub struct Payload {
+pub struct TransactionPayload {
     pub agent_id: String,
     pub message_type: String,
     pub message_bytes: Vec<u8>,
     pub timestamp: u64,
 }
 
-impl Payload {
+impl TransactionPayload {
     pub fn new(agent_id: &str, message_type: &str, message_bytes: &[u8], timestamp: u64) -> Self {
-        Payload {
+        TransactionPayload {
             agent_id: agent_id.to_string(),
             message_type: message_type.to_string(),
             message_bytes: message_bytes.to_vec(),

@@ -1,41 +1,68 @@
-use super::{Parser, ParsingError, ParsingResult, Payload};
+use super::{Parser, ParsingError, ParsingResult, Payload, PayloadValidator, ValidationResult};
 
-pub struct PipeSeperatedPayloadParser {}
+pub struct PipeSeperatedPayloadParser {
+    validator: Box<dyn PayloadValidator>,
+}
 
 impl PipeSeperatedPayloadParser {
     pub fn new() -> Self {
-        PipeSeperatedPayloadParser {}
+        PipeSeperatedPayloadParser {
+            validator: Box::from(PipeSeperatedPayloadValidator::new()),
+        }
     }
 }
 
 impl Parser for PipeSeperatedPayloadParser {
     fn parse(&self, bytes: &[u8]) -> ParsingResult<Payload> {
-        let required_payload_part_count = 4;
+        self.validator.validate(&bytes)?;
+
         let payload = String::from_utf8(bytes.to_vec())
-            .map_err(|_| ParsingError::InvalidPayload("Payload is no string".to_string()))?;
+            .expect("This cannot happen due to previous validation");
 
         let mut content = payload.split("|");
-        let part_count = content.clone().count() as i32;
+        let agent_id = content.next().unwrap();
+        let message_type = content.next().unwrap();
+        let message_bytes = content.next().unwrap().as_bytes();
+        let timestamp = content
+            .next()
+            .unwrap()
+            .parse::<u64>()
+            .map_err(|_| ParsingError::InvalidTimestamp)?;
 
-        if part_count != required_payload_part_count {
-            Err(ParsingError::InvalidPayload(format!(
+        Ok(Payload::new(
+            agent_id,
+            message_type,
+            message_bytes,
+            timestamp,
+        ))
+    }
+}
+
+pub struct PipeSeperatedPayloadValidator {}
+
+impl PipeSeperatedPayloadValidator {
+    pub const REQUIRED_PAYLOAD_PART_COUNT: u8 = 4;
+
+    pub fn new() -> Self {
+        PipeSeperatedPayloadValidator {}
+    }
+}
+
+impl PayloadValidator for PipeSeperatedPayloadValidator {
+    fn validate(&self, payload_bytes: &[u8]) -> ValidationResult {
+        let payload = String::from_utf8(payload_bytes.to_vec())
+            .map_err(|_| ParsingError::InvalidPayload("Payload is no string".to_string()))?;
+
+        let content = payload.split("|");
+        let part_count = content.count() as u8;
+        if part_count != super::parser::PipeSeperatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT {
+            return Err(ParsingError::InvalidPayload(format!(
                 "Payload needs to have exactly {} parts",
-                required_payload_part_count
-            )))
-        } else {
-            let agent_id = content.next().unwrap();
-            let message_type = content.next().unwrap();
-            let message_bytes = content.next().unwrap().as_bytes();
-            let timestamp = content
-                .next()
-                .unwrap()
-                .parse::<u64>()
-                .map_err(|_| ParsingError::InvalidTimestamp)?;
-
-            let payload = Payload::new(agent_id, message_type, message_bytes, timestamp);
-
-            Ok(payload)
+                super::parser::PipeSeperatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT
+            )));
         }
+
+        Ok(())
     }
 }
 

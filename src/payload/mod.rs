@@ -3,9 +3,14 @@ pub mod parser;
 use std::fmt::{Debug, Display, Formatter, Result};
 
 pub type ParsingResult<T> = std::result::Result<T, ParsingError>;
+pub type ValidationResult = std::result::Result<(), ParsingError>;
 
 pub trait Parser {
     fn parse(&self, bytes: &[u8]) -> ParsingResult<Payload>;
+}
+
+pub trait PayloadValidator {
+    fn validate(&self, payload_bytes: &[u8]) -> ValidationResult;
 }
 
 #[derive(Debug)]

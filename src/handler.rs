@@ -23,7 +23,7 @@ impl AlicaMessageTransactionHandler {
         }
     }
 
-    fn parse(&self, payload_bytes: &[u8]) -> Result<Payload, ApplyError> {
+    fn parse_pipe_seperated(&self, payload_bytes: &[u8]) -> Result<Payload, ApplyError> {
         let payload_parser = PipeSeperatedPayloadParser::new();
         payload_parser
             .parse(payload_bytes)
@@ -71,7 +71,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         );
 
         let payload_bytes = request.get_payload();
-        let payload = self.parse(payload_bytes)?;
+        let payload = self.parse_pipe_seperated(payload_bytes)?;
 
         let transaction_address = self.state_address_for(&payload);
         let sawtooth_interactor = sawtooth::Interactor::new(context);

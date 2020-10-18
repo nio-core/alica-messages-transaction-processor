@@ -25,7 +25,7 @@ impl<'a> Interactor<'a> {
             })
     }
 
-    pub fn get_state_entries_for(
+    pub fn fetch_state_entries_for(
         &self,
         state_address: &str,
     ) -> Result<Vec<(String, Vec<u8>)>, ApplyError> {

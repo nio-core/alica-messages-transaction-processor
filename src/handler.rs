@@ -27,6 +27,13 @@ impl AlicaMessageTransactionHandler {
         }
     }
 
+    fn parse(&self, payload_bytes: &[u8]) -> Result<Payload, ApplyError> {
+        let payload_parser = PipeSeperatedPayloadParser::new();
+        payload_parser
+            .parse(payload_bytes)
+            .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))
+    }
+
     fn state_address_for(&self, payload: &Payload) -> String {
         let mut hasher = Sha512::new();
         hasher.update(format!(
@@ -68,15 +75,12 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         );
 
         let sawtooth_interactor = sawtooth::Interactor::new(context);
-        let payload_parser = PipeSeperatedPayloadParser::new();
 
         let payload_bytes = request.get_payload();
-        let payload = payload_parser
-            .parse(payload_bytes)
-            .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))?;
+        let payload = self.parse(payload_bytes)?;
 
         let transaction_address = self.state_address_for(&payload);
-        let state_entries = sawtooth_interactor.get_state_entries_for(&transaction_address)?;
+        let state_entries = sawtooth_interactor.fetch_state_entries_for(&transaction_address)?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {

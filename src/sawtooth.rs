@@ -68,10 +68,11 @@ mod test {
         let mut context = MockTransactionContext::new();
         context.expect_get_state_entries().times(1).returning(|_| Ok(vec![]));
         context.expect_set_state_entries().times(1).returning(|_| Ok(()));
-
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        assert!(transaction_applicator.create_state_entry(address, value).is_ok())
+        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+
+        assert!(transaction_application_result.is_ok())
     }
 
     #[test]
@@ -82,10 +83,11 @@ mod test {
         context.expect_get_state_entries().times(1)
             .returning(move |_| Ok(vec![(String::from(address), value.to_vec())]));
         context.expect_set_state_entries().times(0);
-
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        assert!(transaction_applicator.create_state_entry(address, value).is_err())
+        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+
+        assert!(transaction_application_result.is_err())
     }
 
     #[test]
@@ -99,9 +101,10 @@ mod test {
                 (String::from(address), value.to_vec())
             ]));
         context.expect_set_state_entries().times(0);
-
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        assert!(transaction_applicator.create_state_entry(address, value).is_err())
+        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+
+        assert!(transaction_application_result.is_err())
     }
 }

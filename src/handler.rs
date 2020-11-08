@@ -128,14 +128,50 @@ mod test {
     }
 
     mod transaction_application {
+        use crate::handler::AlicaMessageTransactionHandler;
+        use crate::payload::{MockParser, TransactionPayload, ParsingError};
+        use sawtooth_sdk::processor::handler::TransactionHandler;
+        use sawtooth_sdk::messages::processor::TpProcessRequest;
+        use sawtooth_sdk::messages::transaction::TransactionHeader;
+        use crate::testing;
+
+        fn transaction_processing_request() -> TpProcessRequest {
+            let mut transaction_header = TransactionHeader::new();
+            transaction_header.set_signer_public_key("SomeKey".to_string());
+            let mut request = TpProcessRequest::new();
+            request.set_header(transaction_header);
+            request.set_payload("".as_bytes().to_vec());
+            request
+        }
+
         #[test]
         fn apply_adds_transaction_if_it_is_well_structured() {
+            let mut transaction_payload_parser = Box::new(MockParser::new());
+            transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let request = transaction_processing_request();
+            let mut context = testing::MockTransactionContext::new();
+            context.expect_get_state_entries().times(1).returning(|_| Ok(vec![]));
+            context.expect_set_state_entries().times(1).returning(|_| Ok(()));
 
+            let transaction_application_result = transaction_handler.apply(&request, &mut context);
+
+            assert!(transaction_application_result.is_ok())
         }
 
         #[test]
         fn apply_does_not_add_transaction_if_it_is_not_well_structured() {
+            let mut transaction_payload_parser = Box::new(MockParser::new());
+            transaction_payload_parser.expect_parse().times(1).returning(|_| Err(ParsingError::InvalidPayload("".to_string())));
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let request = transaction_processing_request();
+            let mut context = testing::MockTransactionContext::new();
+            context.expect_get_state_entries().times(0);
+            context.expect_set_state_entries().times(0);
 
+            let transaction_application_result = transaction_handler.apply(&request, &mut context);
+
+            assert!(transaction_application_result.is_err())
         }
     }
 }

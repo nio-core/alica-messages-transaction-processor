@@ -1,18 +1,18 @@
-use crate::{payload::TransactionPayload, sawtooth, util};
+use crate::{sawtooth, util, payload};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
-
-use crate::payload::{parser::PipeSeparatedPayloadParser, Parser};
 
 pub struct AlicaMessageTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
     family_namespaces: Vec<String>,
+    transaction_payload_parser: Box<dyn payload::Parser>,
+
 }
 
 impl AlicaMessageTransactionHandler {
-    pub fn new() -> Self {
+    pub fn new(transaction_payload_parser: Box<dyn payload::Parser>) -> Self {
         let family_name = "alica_messages";
         let family_name_hash = util::hash(family_name);
 
@@ -20,19 +20,20 @@ impl AlicaMessageTransactionHandler {
             family_name: String::from(family_name),
             family_versions: vec![String::from("0.1.0")],
             family_namespaces: vec![String::from(&family_name_hash[..6])],
+            transaction_payload_parser
         }
     }
 
     fn parse_pipe_separated(
         &self,
         transaction_payload_bytes: &[u8],
-    ) -> Result<TransactionPayload, ApplyError> {
-        PipeSeparatedPayloadParser::new()
+    ) -> Result<payload::TransactionPayload, ApplyError> {
+        self.transaction_payload_parser
             .parse(transaction_payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)))
     }
 
-    fn state_address_for(&self, transaction_payload: &TransactionPayload) -> String {
+    fn state_address_for(&self, transaction_payload: &payload::TransactionPayload) -> String {
         let payload_part_of_state_address = format!(
             "{}{}{}",
             transaction_payload.agent_id,
@@ -78,176 +79,99 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         let transaction_payload = self.parse_pipe_separated(transaction_payload_bytes)?;
 
         let transaction_address = self.state_address_for(&transaction_payload);
-        let sawtooth_interactor = sawtooth::Interactor::new(context);
-        sawtooth_interactor.create_state_entry(&transaction_address,
-                                               &transaction_payload.message_bytes)
+        let transaction_applicator = sawtooth::TransactionApplicator::new(context);
+        transaction_applicator.create_state_entry(&transaction_address,
+                                                  &transaction_payload.message_bytes)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::payload::TransactionPayload;
-    use crate::{handler::AlicaMessageTransactionHandler, util};
+    mod state_address_generation {
+        use crate::{payload, util};
+        use crate::handler::AlicaMessageTransactionHandler;
 
-    use sawtooth_sdk::messages;
-    use sawtooth_sdk::messages::processor::TpProcessRequest;
-    use sawtooth_sdk::messages::transaction::TransactionHeader;
-    use sawtooth_sdk::processor::handler::{ContextError, TransactionContext, TransactionHandler};
+        fn transaction_handler() -> AlicaMessageTransactionHandler {
+            let transaction_payload_parser: Box<dyn payload::Parser> = Box::new(payload::MockParser::new());
+            AlicaMessageTransactionHandler::new(transaction_payload_parser)
+        }
 
-    mockall::mock! {
-        pub Context {}
+        #[test]
+        fn generated_address_is_70_bytes_in_size() {
+            let parsed_payload = payload::TransactionPayload::default();
 
-        trait TransactionContext {
-            fn get_state_entries(&self, address: &[String]) -> Result<Vec<(String, Vec<u8>)>, ContextError>;
-            fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError>;
-            fn delete_state_entries(&self, address: &[String]) -> Result<Vec<String>, ContextError>;
-            fn add_receipt_data(&self, data: &[u8]) -> Result<(), ContextError>;
-            fn add_event(&self, address: String, entries: Vec<(String, String)>, data: &[u8]) -> Result<(), ContextError>;
+            let state_address = transaction_handler().state_address_for(&parsed_payload);
+
+            assert_eq!(state_address.len(), 70)
+        }
+
+        #[test]
+        fn generated_address_starts_with_transaction_family_namespace() {
+            let parsed_payload = payload::TransactionPayload::default();
+
+            let state_address = transaction_handler().state_address_for(&parsed_payload);
+
+            let expected_namespace = &transaction_handler().family_namespaces[0];
+            assert!(state_address.starts_with(expected_namespace))
+        }
+
+        #[test]
+        fn generated_address_ends_with_a_hash_built_from_the_transaction_payload_meta_data() {
+            let parsed_payload = payload::TransactionPayload::default();
+
+            let state_address = transaction_handler().state_address_for(&parsed_payload);
+
+            let expected_transaction_part = format!("{}{}{}", parsed_payload.agent_id, parsed_payload.message_type, parsed_payload.timestamp);
+            let transaction_part = &util::hash(&expected_transaction_part)[..64];
+            assert!(state_address.ends_with(transaction_part))
         }
     }
 
-    #[test]
-    fn apply_with_invalid_utf8_payload_fails_with_apply_error() {
-        let handler = AlicaMessageTransactionHandler::new();
+    mod transaction_application {
+        use crate::handler::AlicaMessageTransactionHandler;
+        use crate::payload::{MockParser, TransactionPayload, ParsingError};
+        use sawtooth_sdk::processor::handler::TransactionHandler;
+        use sawtooth_sdk::messages::processor::TpProcessRequest;
+        use sawtooth_sdk::messages::transaction::TransactionHeader;
+        use crate::testing;
 
-        let mut request = TpProcessRequest::new();
-        let mut context = MockContext::new();
+        fn transaction_processing_request() -> TpProcessRequest {
+            let mut transaction_header = TransactionHeader::new();
+            transaction_header.set_signer_public_key("SomeKey".to_string());
+            let mut request = TpProcessRequest::new();
+            request.set_header(transaction_header);
+            request.set_payload("".as_bytes().to_vec());
+            request
+        }
 
-        let mut header = TransactionHeader::new();
-        header.set_signer_public_key(String::from("980490840984984"));
-        request.set_header(header);
-        request.set_payload(vec![0xff, 0xff]);
+        #[test]
+        fn apply_adds_transaction_if_it_is_well_structured() {
+            let mut transaction_payload_parser = Box::new(MockParser::new());
+            transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let request = transaction_processing_request();
+            let mut context = testing::MockTransactionContext::new();
+            context.expect_get_state_entries().times(1).returning(|_| Ok(vec![]));
+            context.expect_set_state_entries().times(1).returning(|_| Ok(()));
 
-        handler.apply(&request, &mut context).unwrap_err();
-    }
+            let transaction_application_result = transaction_handler.apply(&request, &mut context);
 
-    #[test]
-    fn apply_with_validly_structured_payload_succeeds() {
-        let handler = AlicaMessageTransactionHandler::new();
+            assert!(transaction_application_result.is_ok())
+        }
 
-        let mut request = TpProcessRequest::new();
-        let mut context = MockContext::new();
+        #[test]
+        fn apply_does_not_add_transaction_if_it_is_not_well_structured() {
+            let mut transaction_payload_parser = Box::new(MockParser::new());
+            transaction_payload_parser.expect_parse().times(1).returning(|_| Err(ParsingError::InvalidPayload("".to_string())));
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let request = transaction_processing_request();
+            let mut context = testing::MockTransactionContext::new();
+            context.expect_get_state_entries().times(0);
+            context.expect_set_state_entries().times(0);
 
-        context
-            .expect_get_state_entries()
-            .times(1)
-            .returning(|_addresses| Ok(vec![]));
-        context
-            .expect_set_state_entries()
-            .times(1)
-            .returning(|_entries| Ok(()));
+            let transaction_application_result = transaction_handler.apply(&request, &mut context);
 
-        let mut header = TransactionHeader::new();
-        header.set_signer_public_key(String::from("980490840984984"));
-        request.set_header(header);
-        request.set_payload("id|type|msg|64984494984".as_bytes().to_vec());
-
-        handler.apply(&request, &mut context).unwrap();
-    }
-
-    #[test]
-    fn generated_address_is_70_bytes_in_size() {
-        let handler = AlicaMessageTransactionHandler::new();
-        let payload = TransactionPayload::new("id", "type", "message".as_bytes(), 6876984987987989);
-
-        let address = handler.state_address_for(&payload);
-
-        assert_eq!(address.as_bytes().len(), 70);
-    }
-
-    #[test]
-    fn generated_address_for_empty_message_is_70_bytes_in_size() {
-        let handler = AlicaMessageTransactionHandler::new();
-        let payload = TransactionPayload::new("id", "type", "".as_bytes(), 6876984987987989);
-
-        let address = handler.state_address_for(&payload);
-
-        assert_eq!(address.as_bytes().len(), 70);
-    }
-
-    #[test]
-    fn generated_address_starts_with_transaction_family_namespace() {
-        let handler = AlicaMessageTransactionHandler::new();
-        let payload = TransactionPayload::new("id", "type", "message".as_bytes(), 6876984987987989);
-
-        let address = handler.state_address_for(&payload);
-
-        let namespace = util::hash(&handler.family_name());
-        assert!(address.starts_with(&namespace[..6]))
-    }
-
-    #[test]
-    fn apply_adds_non_existing_entry() {
-        let handler = AlicaMessageTransactionHandler::new();
-        let mut request = TpProcessRequest::new();
-        let mut context = MockContext::new();
-        context
-            .expect_get_state_entries()
-            .times(1)
-            .returning(|_addresses| Ok(vec![]));
-        context
-            .expect_set_state_entries()
-            .times(1)
-            .returning(|_entries| Ok(()));
-
-        let mut header = messages::transaction::TransactionHeader::new();
-        header.set_signer_public_key(String::from("980490840984984"));
-        request.set_header(header);
-        request.set_payload("id|type|msg|498498498".as_bytes().to_vec());
-
-        handler.apply(&request, &mut context).unwrap();
-    }
-
-    #[test]
-    fn apply_fails_with_existing_entry() {
-        let handler = AlicaMessageTransactionHandler::new();
-
-        let mut request = TpProcessRequest::new();
-        let mut context = MockContext::new();
-        context
-            .expect_get_state_entries()
-            .times(1)
-            .returning(|addresses| {
-                let mut entries = Vec::new();
-                for addr in addresses {
-                    entries.push((addr.clone(), vec![0x0]));
-                }
-
-                Ok(entries)
-            });
-        context.expect_set_state_entries().times(0);
-
-        let mut header = messages::transaction::TransactionHeader::new();
-        header.set_signer_public_key(String::from("980490840984984"));
-        request.set_header(header);
-        request.set_payload("id|type|msg|65494894949".as_bytes().to_vec());
-
-        handler.apply(&request, &mut context).unwrap_err();
-    }
-
-    #[test]
-    fn apply_fails_if_multiple_entries_exist() {
-        let handler = AlicaMessageTransactionHandler::new();
-        let mut request = TpProcessRequest::new();
-        let mut context = MockContext::new();
-        context
-            .expect_get_state_entries()
-            .times(1)
-            .returning(|addresses| {
-                let mut entries = Vec::new();
-                for address in addresses {
-                    entries.push((address.clone(), vec![0x0]));
-                    entries.push((address.clone(), vec![0x1]));
-                }
-
-                Ok(entries)
-            });
-
-        let mut header = messages::transaction::TransactionHeader::new();
-        header.set_signer_public_key(String::from("980490840984984"));
-        request.set_header(header);
-        request.set_payload("id|type|msg|89891819".as_bytes().to_vec());
-
-        handler.apply(&request, &mut context).unwrap_err();
+            assert!(transaction_application_result.is_err())
+        }
     }
 }

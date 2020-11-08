@@ -1,35 +1,33 @@
 use super::{
-    Parser, ParsingError, ParsingResult, PayloadValidator, TransactionPayload, ValidationResult,
+    Parser, ParsingResult, TransactionPayload
 };
+use crate::payload::ParsingError::{InvalidPayload, InvalidTimestamp};
 
-pub struct PipeSeparatedPayloadParser {
-    validator: Box<dyn PayloadValidator>,
-}
+pub struct PipeSeparatedPayloadParser {}
 
 impl PipeSeparatedPayloadParser {
     pub fn new() -> Self {
-        PipeSeparatedPayloadParser {
-            validator: Box::from(PipeSeparatedPayloadValidator::new()),
-        }
+        PipeSeparatedPayloadParser {}
     }
 }
 
 impl Parser for PipeSeparatedPayloadParser {
-    fn parse(&self, bytes: &[u8]) -> ParsingResult<TransactionPayload> {
-        self.validator.validate(&bytes)?;
-
+    fn parse(&self, bytes: &[u8]) -> ParsingResult {
         let payload = String::from_utf8(bytes.to_vec())
-            .expect("This cannot happen due to previous validation");
+            .map_err(|_| InvalidPayload("Payload is not a string".to_string()))?;
 
         let mut content = payload.split("|");
-        let agent_id = content.next().unwrap();
-        let message_type = content.next().unwrap();
-        let message_bytes = content.next().unwrap().as_bytes();
-        let timestamp = content
-            .next()
-            .unwrap()
+        let agent_id = content.next()
+            .ok_or_else(|| InvalidPayload("Payload contains no agent id".to_string()))?;
+        let message_type = content.next()
+            .ok_or_else(|| InvalidPayload("Payload contains no message type".to_string()))?;
+        let message_bytes = content.next()
+            .and_then(|message| Some(message.as_bytes()))
+            .ok_or_else(|| InvalidPayload("Payload contains no message".to_string()))?;
+        let timestamp = content.next()
+            .ok_or_else(|| InvalidPayload("Payload contains no timestamp".to_string()))?
             .parse::<u64>()
-            .map_err(|_| ParsingError::InvalidTimestamp)?;
+            .map_err(|_| InvalidTimestamp)?;
 
         Ok(TransactionPayload::new(
             agent_id,
@@ -40,38 +38,9 @@ impl Parser for PipeSeparatedPayloadParser {
     }
 }
 
-pub struct PipeSeparatedPayloadValidator {}
-
-impl PipeSeparatedPayloadValidator {
-    pub const REQUIRED_PAYLOAD_PART_COUNT: u8 = 4;
-
-    pub fn new() -> Self {
-        PipeSeparatedPayloadValidator {}
-    }
-}
-
-impl PayloadValidator for PipeSeparatedPayloadValidator {
-    fn validate(&self, payload_bytes: &[u8]) -> ValidationResult {
-        let payload = String::from_utf8(payload_bytes.to_vec())
-            .map_err(|_| ParsingError::InvalidPayload("Payload is no string".to_string()))?;
-
-        let content = payload.split("|");
-        let part_count = content.count() as u8;
-        if part_count != super::parser::PipeSeparatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT {
-            return Err(ParsingError::InvalidPayload(format!(
-                "Payload needs to have exactly {} parts",
-                super::parser::PipeSeparatedPayloadValidator::REQUIRED_PAYLOAD_PART_COUNT
-            )));
-        }
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::payload::Parser;
-
     use super::PipeSeparatedPayloadParser;
 
     #[test]

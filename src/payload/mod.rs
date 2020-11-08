@@ -1,16 +1,13 @@
 pub mod parser;
 
 use std::fmt::{Debug, Display, Formatter, Result};
+use mockall;
 
-pub type ParsingResult<T> = std::result::Result<T, ParsingError>;
-pub type ValidationResult = std::result::Result<(), ParsingError>;
+pub type ParsingResult = std::result::Result<TransactionPayload, ParsingError>;
 
+#[mockall::automock]
 pub trait Parser {
-    fn parse(&self, bytes: &[u8]) -> ParsingResult<TransactionPayload>;
-}
-
-pub trait PayloadValidator {
-    fn validate(&self, payload_bytes: &[u8]) -> ValidationResult;
+    fn parse(&self, bytes: &[u8]) -> ParsingResult;
 }
 
 #[derive(Debug)]
@@ -44,6 +41,17 @@ impl TransactionPayload {
             message_type: message_type.to_string(),
             message_bytes: message_bytes.to_vec(),
             timestamp,
+        }
+    }
+}
+
+impl Default for TransactionPayload {
+    fn default() -> Self {
+        TransactionPayload {
+            agent_id: "".to_string(),
+            message_type: "".to_string(),
+            message_bytes: "".as_bytes().to_vec(),
+            timestamp: 0
         }
     }
 }

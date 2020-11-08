@@ -1,9 +1,10 @@
 use mockall;
+
 use crate::messages::AlicaMessageValidationError::{InvalidFormat, MissingField};
 
 pub mod json_validation {
+    use crate::messages::{AlicaMessageJsonValidator, AlicaMessageValidationResult, CapnZeroIdValidator};
     use crate::messages::AlicaMessageValidationError::{InvalidFormat, MissingField};
-    use crate::messages::{AlicaMessageValidationResult, CapnZeroIdValidator, AlicaMessageJsonValidator};
 
     pub fn validate_string_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
         let value = container.get(field).ok_or_else(|| MissingField(field.to_string()))?;
@@ -24,15 +25,15 @@ pub mod json_validation {
         }
     }
 
-    pub fn validate_capnzero_id_list_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
-        let validator = CapnZeroIdValidator::new();
+    pub fn validate_list_field_with_complex_components(container: &json::object::Object, field: &str, validator: &dyn AlicaMessageJsonValidator)
+        -> AlicaMessageValidationResult {
         match container.get(field) {
             Some(field_json) => match field_json {
-                json::JsonValue::Array(id_array_json) => {
-                    id_array_json.iter()
-                        .map(|id| validator.parse_alica_message(id.dump().as_bytes()))
+                json::JsonValue::Array(array_json) => {
+                    array_json.iter()
+                        .map(|array_entry| validator.parse_alica_message(array_entry.dump().as_bytes()))
                         .collect()
-                }
+                },
                 _ => Err(InvalidFormat(format!("{} is no array", field)))
             },
             None => Err(MissingField(field.to_string()))
@@ -115,73 +116,54 @@ impl AlicaMessageJsonValidator for AlicaEngineInfoValidator {
         json_validation::validate_string_field(&engine_info_root, "currentState")?;
         json_validation::validate_string_field(&engine_info_root, "currentRole")?;
         json_validation::validate_string_field(&engine_info_root, "currentTask")?;
-        json_validation::validate_capnzero_id_list_field(&engine_info_root, "agentIdsWithMe")?;
+        json_validation::validate_list_field_with_complex_components(&engine_info_root, "agentIdsWithMe", &CapnZeroIdValidator::new())?;
 
         Ok(())
     }
 }
 
-mod test {
-    mod capnzero_id {
-        use json;
-        use crate::messages::{AlicaMessageJsonValidator, CapnZeroIdValidator};
+pub struct AllocationAuthorityInfoValidator {}
 
-        #[test]
-        fn it_considers_a_complete_capnzero_id_valid() {
-            let capnzero_id = json::object!{
-                type: 0,
-                value: "id"
-            };
-            let capnzero_id_json = json::stringify(capnzero_id);
-
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id_json.as_bytes());
-
-            assert!(validation_result.is_ok())
-        }
-
-        #[test]
-        fn it_considers_a_non_utf8_message_invalid() {
-            let message = vec![0x0];
-
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(&message);
-
-            assert!(validation_result.is_err())
-        }
-
-        #[test]
-        fn it_considers_a_non_json_message_invalid() {
-            let message = "";
-
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(message.as_bytes());
-
-            assert!(validation_result.is_err())
-        }
-
-        #[test]
-        fn it_considers_an_id_without_a_type_invalid() {
-            let capnzero_id = json::object!{};
-            let capnzero_id_json = json::stringify(capnzero_id);
-
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id_json.as_bytes());
-
-            assert!(validation_result.is_err())
-        }
-
-        #[test]
-        fn it_considers_an_id_without_a_value_invalid() {
-            let capnzero_id = json::object!{
-                type: 0
-            };
-            let capnzero_id_json = json::stringify(capnzero_id);
-
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id_json.as_bytes());
-
-            assert!(validation_result.is_err())
-        }
+impl AllocationAuthorityInfoValidator {
+    pub fn new() -> Self {
+        AllocationAuthorityInfoValidator {}
     }
+}
 
+impl AlicaMessageJsonValidator for AllocationAuthorityInfoValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let allocation_authority_info_root = json_helper::parse_object(message)?;
+
+        json_validation::validate_capnzero_id_field(&allocation_authority_info_root, "senderId")?;
+        json_validation::validate_integer_field(&allocation_authority_info_root, "planId")?;
+        json_validation::validate_integer_field(&allocation_authority_info_root, "parentState")?;
+        json_validation::validate_integer_field(&allocation_authority_info_root, "planType")?;
+        json_validation::validate_capnzero_id_field(&allocation_authority_info_root, "authority")?;
+        json_validation::validate_list_field_with_complex_components(&allocation_authority_info_root, "entrypointRobots", &EntryPointRobotValidator::new())?;
+
+        Ok(())
+    }
+}
+
+pub struct EntryPointRobotValidator {}
+
+impl EntryPointRobotValidator {
+    pub fn new() -> Self {
+        EntryPointRobotValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for EntryPointRobotValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let entry_point_robot = json_helper::parse_object(message)?;
+        json_validation::validate_integer_field(&entry_point_robot, "entrypoint")?;
+        json_validation::validate_list_field_with_complex_components(&entry_point_robot, "robots", &CapnZeroIdValidator::new())?;
+        Ok(())
+    }
+}
+
+mod test {
     mod alica_engine_info {
-        use json;
         use crate::messages::{AlicaEngineInfoValidator, AlicaMessageJsonValidator};
 
         #[test]
@@ -206,10 +188,9 @@ mod test {
                         value: "other other agent"
                     },
                 ]
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -234,10 +215,9 @@ mod test {
 
         #[test]
         fn it_considers_an_alica_engine_info_with_missing_sender_id_invalid() {
-            let engine_info = json::object!{};
-            let engine_info_json = json::stringify(engine_info);
+            let engine_info = json::object!{}.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -249,10 +229,9 @@ mod test {
                     type: 0,
                     value: "id"
                 }
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -265,10 +244,9 @@ mod test {
                     value: "id"
                 },
                 masterPlan: "master plan"
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -282,10 +260,9 @@ mod test {
                 },
                 masterPlan: "master plan",
                 currentPlan: "current plan"
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -300,10 +277,9 @@ mod test {
                 masterPlan: "master plan",
                 currentPlan: "current plan",
                 currentState: "current state"
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -319,10 +295,9 @@ mod test {
                 currentPlan: "current plan",
                 currentState: "current state",
                 currentRole: "current role"
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -339,14 +314,266 @@ mod test {
                 currentState: "current state",
                 currentRole: "current role",
                 currentTask: "current task"
-            };
-            let engine_info_json = json::stringify(engine_info);
+            }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info_json.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
     }
 
-    mod allocation_authority_info {}
+    mod allocation_authority_info {
+        use crate::messages::{AlicaMessageJsonValidator, AllocationAuthorityInfoValidator};
+
+        #[test]
+        fn it_considers_a_complete_allocation_authority_info_valid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                planId: 1,
+                parentState: 2,
+                planType: 3,
+                authority: {
+                    type: 1,
+                    value: "authority id"
+                },
+                entrypointRobots: [
+
+                ]
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_info_without_a_sender_id_invalid() {
+            let allocation_authority_info = json::object!{}.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_without_a_plan_id_invalid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_info_without_a_parent_state_invalid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                planId: 1
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_info_without_a_plan_type_invalid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                planId: 1,
+                parentState: 2
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_info_without_an_authority_invalid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                planId: 1,
+                parentState: 2,
+                planType: 3
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_allocation_authority_info_without_a_list_of_entrypoint_robots_invalid() {
+            let allocation_authority_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                planId: 1,
+                parentState: 2,
+                planType: 3,
+                authority: {
+                    type: 1,
+                    value: "authority id"
+                }
+            }.dump();
+
+            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod entry_point_robot {
+        use crate::messages::{AlicaMessageJsonValidator, EntryPointRobotValidator};
+
+        #[test]
+        fn it_considers_a_complete_entry_point_robot_valid() {
+            let entry_point_robot = json::object!{
+                entrypoint: 0,
+                robots: [
+                    {
+                        type: 1,
+                        value: "id1"
+                    },
+                    {
+                        type: 1,
+                        value: "id2"
+                    }
+                ]
+            }.dump();
+
+            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = EntryPointRobotValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = EntryPointRobotValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_entry_point_robot_without_entrypoint_invalid() {
+            let entry_point_robot = json::object!{}.dump();
+
+            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_entry_point_robot_without_robots_invalid() {
+            let entry_point_robot = json::object!{
+                entrypoint: 0
+            }.dump();
+
+            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod capnzero_id {
+        use crate::messages::{AlicaMessageJsonValidator, CapnZeroIdValidator};
+
+        #[test]
+        fn it_considers_a_complete_capnzero_id_valid() {
+            let capnzero_id = json::object!{
+                type: 0,
+                value: "id"
+            }.dump();
+
+            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = CapnZeroIdValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = CapnZeroIdValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_id_without_a_type_invalid() {
+            let capnzero_id = json::object!{}.dump();
+
+            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_an_id_without_a_value_invalid() {
+            let capnzero_id = json::object!{
+                type: 0
+            }.dump();
+
+            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
 }

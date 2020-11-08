@@ -59,26 +59,13 @@ impl<'a> TransactionApplicator<'a> {
 
 mod test {
     use super::TransactionApplicator;
-    use mockall::mock;
-    use sawtooth_sdk::processor::handler::{ContextError, TransactionContext};
-
-    mock! {
-        pub Context {}
-
-        trait TransactionContext {
-            fn get_state_entries(&self, addresses: &[String]) -> Result<Vec<(String, Vec<u8>)>, ContextError>;
-            fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError>;
-            fn delete_state_entries(&self, addresses: &[String]) -> Result<Vec<String>, ContextError>;
-            fn add_receipt_data(&self, data: &[u8]) -> Result<(), ContextError>;
-            fn add_event(&self, address: String, entries: Vec<(String, String)>, data: &[u8]) -> Result<(), ContextError>;
-        }
-    }
+    use crate::testing::MockTransactionContext;
 
     #[test]
     fn apply_adds_transaction_if_no_state_entry_exists_for_the_address() {
         let address = "addr";
         let value = "value".as_bytes();
-        let mut context = MockContext::new();
+        let mut context = MockTransactionContext::new();
         context.expect_get_state_entries().times(1).returning(|_| Ok(vec![]));
         context.expect_set_state_entries().times(1).returning(|_| Ok(()));
 
@@ -91,7 +78,7 @@ mod test {
     fn apply_does_not_add_the_transaction_if_a_single_state_entry_exists_for_the_address() {
         let address = "addr";
         let value = "value".as_bytes();
-        let mut context = MockContext::new();
+        let mut context = MockTransactionContext::new();
         context.expect_get_state_entries().times(1)
             .returning(move |_| Ok(vec![(String::from(address), value.to_vec())]));
         context.expect_set_state_entries().times(0);
@@ -105,7 +92,7 @@ mod test {
     fn apply_does_not_add_the_transaction_if_multiple_state_entries_exists_for_the_address() {
         let address = "addr";
         let value = "value".as_bytes();
-        let mut context = MockContext::new();
+        let mut context = MockTransactionContext::new();
         context.expect_get_state_entries().times(1)
             .returning(move |_| Ok(vec![
                 (String::from(address), value.to_vec()),

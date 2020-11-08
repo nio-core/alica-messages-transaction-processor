@@ -1,5 +1,6 @@
 use alica_messages_tp::handler::AlicaMessageTransactionHandler;
 use sawtooth_sdk::processor::TransactionProcessor;
+use alica_messages_tp::payload::parser::PipeSeparatedPayloadParser;
 
 fn main() {
     let args = clap::App::new("alica-messages-tp")
@@ -19,7 +20,8 @@ fn main() {
         .value_of("connect")
         .expect("Missing validator address!");
 
-    let transaction_handler = AlicaMessageTransactionHandler::new();
+    let payload_parser = Box::from(PipeSeparatedPayloadParser::new());
+    let transaction_handler = AlicaMessageTransactionHandler::new(payload_parser);
     let mut processor = TransactionProcessor::new(validator_url);
     processor.add_handler(&transaction_handler);
     processor.start();

@@ -1,4 +1,4 @@
-use crate::{sawtooth, util, payload, messages};
+use crate::{sawtooth, util, payload};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
@@ -142,11 +142,12 @@ mod test {
     mod transaction_application {
         use crate::handler::AlicaMessageTransactionHandler;
         use crate::payload::{MockParser, TransactionPayload, ParsingError};
-        use crate::messages::{MockAlicaMessageJsonValidator, AlicaMessageValidationError};
+        use crate::messages::{MockAlicaMessageJsonValidator};
         use crate::testing;
         use sawtooth_sdk::processor::handler::TransactionHandler;
         use sawtooth_sdk::messages::processor::TpProcessRequest;
         use sawtooth_sdk::messages::transaction::TransactionHeader;
+        use crate::messages::AlicaMessageValidationError::InvalidFormat;
 
         fn transaction_processing_request() -> TpProcessRequest {
             let mut transaction_header = TransactionHeader::new();
@@ -205,7 +206,7 @@ mod test {
             transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
-            alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Err(AlicaMessageValidationError::new("")));
+            alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Err(InvalidFormat("".to_string())));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
             transaction_handler.add_alica_message_parser_for_type("", Box::from(alica_message_parser));
@@ -225,7 +226,7 @@ mod test {
             let mut transaction_payload_parser = Box::new(MockParser::new());
             transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
 
-            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
 
             let request = transaction_processing_request();
             let mut context = testing::MockTransactionContext::new();

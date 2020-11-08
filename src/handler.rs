@@ -87,21 +87,6 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 
 #[cfg(test)]
 mod test {
-    use mockall::mock;
-    use sawtooth_sdk::processor::handler::{TransactionContext, ContextError};
-
-    mock! {
-        pub Context {}
-
-        trait TransactionContext {
-            fn get_state_entries(&self, addresses: &[String]) -> Result<Vec<(String, Vec<u8>)>, ContextError>;
-            fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError>;
-            fn delete_state_entries(&self, addresses: &[String]) -> Result<Vec<String>, ContextError>;
-            fn add_receipt_data(&self, data: &[u8]) -> Result<(), ContextError>;
-            fn add_event(&self, address: String, entries: Vec<(String, String)>, data: &[u8]) -> Result<(), ContextError>;
-        }
-    }
-
     mod state_address_generation {
         use crate::{payload, util};
         use crate::handler::AlicaMessageTransactionHandler;
@@ -150,21 +135,6 @@ mod test {
 
         #[test]
         fn apply_does_not_add_transaction_if_it_is_not_well_structured() {
-
-        }
-
-        #[test]
-        fn apply_adds_transaction_if_no_state_entry_exists_for_the_address() {
-
-        }
-
-        #[test]
-        fn apply_does_not_add_the_transaction_if_a_single_state_entry_exists_for_the_address() {
-
-        }
-
-        #[test]
-        fn apply_does_not_add_the_transaction_if_multiple_state_entries_exists_for_the_address() {
 
         }
     }

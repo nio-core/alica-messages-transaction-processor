@@ -3,16 +3,16 @@ use sawtooth_sdk::processor::handler::{
     TransactionContext,
 };
 
-pub struct Interactor<'a> {
+pub struct TransactionApplicator<'a> {
     context: &'a mut dyn TransactionContext,
 }
 
-impl<'a> Interactor<'a> {
+impl<'a> TransactionApplicator<'a> {
     pub fn new(context: &'a mut dyn TransactionContext) -> Self {
-        Interactor { context }
+        TransactionApplicator { context }
     }
 
-    pub fn fetch_state_entries_for(
+    pub fn fetch_state_entries(
         &self,
         state_address: &str,
     ) -> Result<Vec<(String, Vec<u8>)>, ApplyError> {
@@ -27,7 +27,7 @@ impl<'a> Interactor<'a> {
     }
 
     pub fn create_state_entry(&self, state_address: &str, data: &[u8]) -> Result<(), ApplyError> {
-        let state_entries = self.fetch_state_entries_for(&state_address)?;
+        let state_entries = self.fetch_state_entries(&state_address)?;
 
         let state_entry_count = state_entries.len();
         match state_entry_count {

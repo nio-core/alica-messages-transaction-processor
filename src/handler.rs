@@ -79,9 +79,9 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         let transaction_payload = self.parse_pipe_separated(transaction_payload_bytes)?;
 
         let transaction_address = self.state_address_for(&transaction_payload);
-        let sawtooth_interactor = sawtooth::Interactor::new(context);
-        sawtooth_interactor.create_state_entry(&transaction_address,
-                                               &transaction_payload.message_bytes)
+        let transaction_applicator = sawtooth::TransactionApplicator::new(context);
+        transaction_applicator.create_state_entry(&transaction_address,
+                                                  &transaction_payload.message_bytes)
     }
 }
 

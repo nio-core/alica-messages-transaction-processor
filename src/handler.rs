@@ -10,7 +10,7 @@ pub struct AlicaMessageTransactionHandler {
     family_versions: Vec<String>,
     family_namespaces: Vec<String>,
     transaction_payload_parser: Box<dyn payload::Parser>,
-    alica_message_parsers: HashMap<String, Box<dyn AlicaMessageJsonValidator>>
+    alica_message_validators: HashMap<String, Box<dyn AlicaMessageJsonValidator>>
 }
 
 impl AlicaMessageTransactionHandler {
@@ -23,12 +23,12 @@ impl AlicaMessageTransactionHandler {
             family_versions: vec![String::from("0.1.0")],
             family_namespaces: vec![String::from(&family_name_hash[..6])],
             transaction_payload_parser,
-            alica_message_parsers: HashMap::new()
+            alica_message_validators: HashMap::new()
         }
     }
 
     pub fn with_validator_for(&mut self, message_type: &str, message_parser: Box<dyn AlicaMessageJsonValidator>) -> &mut Self {
-        self.alica_message_parsers.insert(message_type.to_string(), message_parser);
+        self.alica_message_validators.insert(message_type.to_string(), message_parser);
         self
     }
 
@@ -58,6 +58,13 @@ impl AlicaMessageTransactionHandler {
             first_6_bytes_of_namespace_checksum, first_64_bytes_of_payload_checksum
         )
     }
+
+    fn validate_contained_message(&self, payload: &payload::TransactionPayload) -> Result<(), ApplyError> {
+        let message_validator = self.alica_message_validators.get(&payload.message_type)
+            .ok_or_else(|| InvalidTransaction(format!("No matching message validator for {} available", &payload.message_type)))?;
+        message_validator.validate(&payload.message_bytes)
+            .map_err(|e| InvalidTransaction(e.into()))
+    }
 }
 
 impl TransactionHandler for AlicaMessageTransactionHandler {
@@ -86,10 +93,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         let transaction_payload_bytes = request.get_payload();
         let transaction_payload = self.parse_pipe_separated(transaction_payload_bytes)?;
 
-        let message_parser = self.alica_message_parsers.get(&transaction_payload.message_type)
-            .ok_or_else(|| InvalidTransaction(format!("No matching message parser for {} available", &transaction_payload.message_type)))?;
-        message_parser.parse_alica_message(&transaction_payload.message_bytes)
-            .map_err(|e| InvalidTransaction(e.into()))?;
+        self.validate_contained_message(&transaction_payload)?;
 
         let transaction_address = self.state_address_for(&transaction_payload);
         let transaction_applicator = sawtooth::TransactionApplicator::new(context);

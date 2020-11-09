@@ -178,6 +178,23 @@ impl AlicaMessageJsonValidator for PlanTreeInfoValidator {
     }
 }
 
+pub struct RoleSwitchValidator {}
+
+impl RoleSwitchValidator {
+    pub fn new() -> Self {
+        RoleSwitchValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for RoleSwitchValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let role_switch = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&role_switch, "senderId")?;
+        json_validation::validate_integer_field(&role_switch, "roleId")?;
+        Ok(())
+    }
+}
+
 pub struct CapnZeroIdValidator {}
 
 impl CapnZeroIdValidator {
@@ -629,6 +646,66 @@ mod test {
             }.dump();
 
             let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod role_switch {
+        use crate::messages::{RoleSwitchValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_role_switch_valid() {
+            let role_switch = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                roleId: 1
+            }.dump();
+
+            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = RoleSwitchValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = RoleSwitchValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_role_switch_without_sender_id_invalid() {
+            let role_switch = json::object!{}.dump();
+
+            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_role_switch_wihtout_a_role_id_invalid() {
+            let role_switch = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
 
             assert!(validation_result.is_err())
         }

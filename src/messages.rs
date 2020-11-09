@@ -195,6 +195,40 @@ impl AlicaMessageJsonValidator for RoleSwitchValidator {
     }
 }
 
+pub struct SolverResultValidator {}
+
+impl SolverResultValidator {
+    pub fn new() -> Self {
+        SolverResultValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for SolverResultValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let solver_result = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&solver_result, "senderId")?;
+        json_validation::validate_list_field_with_complex_components(&solver_result, "vars", &SolverVarValidator::new())?;
+        Ok(())
+    }
+}
+
+pub struct SolverVarValidator {}
+
+impl SolverVarValidator {
+    pub fn new() -> Self {
+        SolverVarValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for SolverVarValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let solver_var = json_helper::parse_object(message)?;
+        json_validation::validate_integer_field(&solver_var, "id")?;
+        json_validation::validate_integer_list_field(&solver_var, "value")?;
+        Ok(())
+    }
+}
+
 pub struct CapnZeroIdValidator {}
 
 impl CapnZeroIdValidator {
@@ -706,6 +740,129 @@ mod test {
             }.dump();
 
             let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod solver_result {
+        use crate::messages::{SolverResultValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_solver_result_valid() {
+            let solver_result = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                vars: [
+                    {
+                        id: 0,
+                        value: [1, 2, 3]
+                    },
+                    {
+                        id: 1,
+                        value: [4, 5, 6]
+                    }
+                ]
+            }.dump();
+
+            let validation_result = SolverResultValidator::new().parse_alica_message(solver_result.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = SolverResultValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = SolverResultValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_solver_result_without_a_sender_id_invalid() {
+            let role_switch = json::object!{}.dump();
+
+            let validation_result = SolverResultValidator::new().parse_alica_message(role_switch.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_solver_result_without_variables_invalid() {
+            let role_switch = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = SolverResultValidator::new().parse_alica_message(role_switch.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod solver_var {
+        use crate::messages::{SolverVarValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_solver_var_valid() {
+            let solver_var = json::object!{
+                id: 0,
+                value: [0, 1, 2]
+            }.dump();
+
+            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = SolverVarValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = SolverVarValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_solver_var_wihtout_an_id_invalid() {
+            let solver_var = json::object!{}.dump();
+
+            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_solver_var_without_value_invalid() {
+            let solver_var = json::object!{
+                id: 0
+            }.dump();
+
+            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
 
             assert!(validation_result.is_err())
         }

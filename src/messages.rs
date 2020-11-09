@@ -25,8 +25,25 @@ pub mod json_validation {
         }
     }
 
+    pub fn validate_integer_list_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
+        match container.get(field) {
+            Some(field_json) => match field_json {
+                json::JsonValue::Array(array_json) => {
+                    array_json.iter()
+                        .map(|array_entry| match array_entry.as_i64() {
+                            Some(_) => Ok(()),
+                            None => Err(InvalidFormat(format!("{} contains a non integer entry", field)))
+                        })
+                        .collect()
+                },
+                _ => Err(InvalidFormat(format!("{} is no array", field)))
+            },
+            None => Err(MissingField(field.to_string()))
+        }
+    }
+
     pub fn validate_list_field_with_complex_components(container: &json::object::Object, field: &str, validator: &dyn AlicaMessageJsonValidator)
-        -> AlicaMessageValidationResult {
+                                                       -> AlicaMessageValidationResult {
         match container.get(field) {
             Some(field_json) => match field_json {
                 json::JsonValue::Array(array_json) => {
@@ -77,25 +94,6 @@ pub type AlicaMessageValidationResult = Result<(), AlicaMessageValidationError>;
 #[mockall::automock]
 pub trait AlicaMessageJsonValidator {
     fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult;
-}
-
-pub struct CapnZeroIdValidator {}
-
-impl CapnZeroIdValidator {
-    pub fn new() -> Self {
-        CapnZeroIdValidator {}
-    }
-}
-
-impl AlicaMessageJsonValidator for CapnZeroIdValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
-        let capnzero_id_root = json_helper::parse_object(message)?;
-
-        json_validation::validate_integer_field(&capnzero_id_root, "type")?;
-        json_validation::validate_string_field(&capnzero_id_root, "value")?;
-
-        Ok(())
-    }
 }
 
 pub struct AlicaEngineInfoValidator {}
@@ -158,6 +156,43 @@ impl AlicaMessageJsonValidator for EntryPointRobotValidator {
         let entry_point_robot = json_helper::parse_object(message)?;
         json_validation::validate_integer_field(&entry_point_robot, "entrypoint")?;
         json_validation::validate_list_field_with_complex_components(&entry_point_robot, "robots", &CapnZeroIdValidator::new())?;
+        Ok(())
+    }
+}
+
+pub struct PlanTreeInfoValidator {}
+
+impl PlanTreeInfoValidator {
+    pub fn new() -> Self {
+        PlanTreeInfoValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for PlanTreeInfoValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let plan_tree_info = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&plan_tree_info, "senderId")?;
+        json_validation::validate_integer_list_field(&plan_tree_info, "stateIds")?;
+        json_validation::validate_integer_list_field(&plan_tree_info, "succeededEps")?;
+        Ok(())
+    }
+}
+
+pub struct CapnZeroIdValidator {}
+
+impl CapnZeroIdValidator {
+    pub fn new() -> Self {
+        CapnZeroIdValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for CapnZeroIdValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let capnzero_id_root = json_helper::parse_object(message)?;
+
+        json_validation::validate_integer_field(&capnzero_id_root, "type")?;
+        json_validation::validate_string_field(&capnzero_id_root, "value")?;
+
         Ok(())
     }
 }
@@ -518,6 +553,82 @@ mod test {
             }.dump();
 
             let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod plan_tree_info {
+        use crate::messages::{PlanTreeInfoValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_plan_tree_info_valid() {
+            let plan_tree_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                stateIds: [1, 2, 3],
+                succeededEps: [4, 5, 6]
+            }.dump();
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_plan_tree_info_without_a_sender_id_invalid() {
+            let plan_tree_info = json::object!{}.dump();
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_plan_tree_info_without_state_ids_invalid() {
+            let plan_tree_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_plan_tree_info_without_succeeded_eps_invalid() {
+            let plan_tree_info = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                stateIds: [1, 2, 3]
+            }.dump();
+
+            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
 
             assert!(validation_result.is_err())
         }

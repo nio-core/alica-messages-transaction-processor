@@ -18,6 +18,12 @@ pub mod json_validation {
         Ok(())
     }
 
+    pub(crate) fn validate_boolean_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
+        let value = container.get(field).ok_or_else(|| MissingField(field.to_string()))?;
+        value.as_bool().ok_or_else(|| InvalidFormat(format!("{} is no integer", field)))?;
+        Ok(())
+    }
+
     pub fn validate_capnzero_id_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
         match container.get(field) {
             Some(id) => CapnZeroIdValidator::new().parse_alica_message(id.dump().as_bytes()),
@@ -242,6 +248,42 @@ impl AlicaMessageJsonValidator for SyncReadyValidator {
         let sync_ready = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&sync_ready, "senderId")?;
         json_validation::validate_integer_field(&sync_ready, "synchronisationId")?;
+        Ok(())
+    }
+}
+
+pub struct SyncTalkValidator {}
+
+impl SyncTalkValidator {
+    pub fn new() -> Self {
+        SyncTalkValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for SyncTalkValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let sync_talk = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&sync_talk, "senderId")?;
+        json_validation::validate_list_field_with_complex_components(&sync_talk, "syncData", &SyncDataValidator::new())?;
+        Ok(())
+    }
+}
+
+pub struct SyncDataValidator {}
+
+impl SyncDataValidator {
+    pub fn new() -> Self {
+        SyncDataValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for SyncDataValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let sync_data = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&sync_data, "robotId")?;
+        json_validation::validate_integer_field(&sync_data, "transitionId")?;
+        json_validation::validate_boolean_field(&sync_data, "transitionHolds")?;
+        json_validation::validate_boolean_field(&sync_data, "ack")?;
         Ok(())
     }
 }
@@ -940,6 +982,178 @@ mod test {
             }.dump();
 
             let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod sync_talk {
+        use crate::messages::{SyncTalkValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_sync_talk_valid() {
+            let sync_talk = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                syncData: [
+                    {
+                        robotId: {
+                            type: 1,
+                            value: "robot1"
+                        },
+                        transitionId: 1,
+                        transitionHolds: false,
+                        ack: true
+                    },
+                    {
+                        robotId: {
+                            type: 1,
+                            value: "robot2"
+                        },
+                        transitionId: 2,
+                        transitionHolds: true,
+                        ack: false
+                    },
+                ]
+            }.dump();
+
+            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = SyncTalkValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = SyncTalkValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_talk_without_a_sender_id_invalid() {
+            let sync_talk = json::object!{}.dump();
+
+            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_talk_without_sync_data_invalid() {
+            let sync_talk = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod sync_data {
+        use crate::messages::{SyncDataValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_sync_data_valid() {
+            let sync_talk = json::object!{
+                robotId: {
+                    type: 0,
+                    value: "id"
+                },
+                transitionId: 1,
+                transitionHolds: true,
+                ack: true
+            }.dump();
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_data_without_robot_id_invalid() {
+            let sync_talk = json::object!{}.dump();
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_data_without_transition_id_invalid() {
+            let sync_talk = json::object!{
+                robotId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_data_without_transition_holds_status_invalid() {
+            let sync_talk = json::object!{
+                robotId: {
+                    type: 0,
+                    value: "id"
+                },
+                transitionId: 1
+            }.dump();
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_data_without_ack_status_invalid() {
+            let sync_talk = json::object!{
+                robotId: {
+                    type: 0,
+                    value: "id"
+                },
+                transitionId: 1,
+                transitionHolds: true
+            }.dump();
+
+            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }

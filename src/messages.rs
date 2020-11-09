@@ -229,6 +229,23 @@ impl AlicaMessageJsonValidator for SolverVarValidator {
     }
 }
 
+pub struct SyncReadyValidator {}
+
+impl SyncReadyValidator {
+    pub fn new() -> Self {
+        SyncReadyValidator {}
+    }
+}
+
+impl AlicaMessageJsonValidator for SyncReadyValidator {
+    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+        let sync_ready = json_helper::parse_object(message)?;
+        json_validation::validate_capnzero_id_field(&sync_ready, "senderId")?;
+        json_validation::validate_integer_field(&sync_ready, "synchronisationId")?;
+        Ok(())
+    }
+}
+
 pub struct CapnZeroIdValidator {}
 
 impl CapnZeroIdValidator {
@@ -863,6 +880,66 @@ mod test {
             }.dump();
 
             let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+    }
+
+    mod sync_ready {
+        use crate::messages::{SyncReadyValidator, AlicaMessageJsonValidator};
+
+        #[test]
+        fn it_considers_a_complete_sync_ready_valid() {
+            let sync_ready = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                },
+                synchronisationId: 1
+            }.dump();
+
+            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+
+            assert!(validation_result.is_ok())
+        }
+
+        #[test]
+        fn it_considers_a_non_utf8_message_invalid() {
+            let message = vec![0x0];
+
+            let validation_result = SyncReadyValidator::new().parse_alica_message(&message);
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_non_json_message_invalid() {
+            let message = "";
+
+            let validation_result = SyncReadyValidator::new().parse_alica_message(message.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_ready_without_a_sender_id_invalid() {
+            let sync_ready = json::object!{}.dump();
+
+            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+
+            assert!(validation_result.is_err())
+        }
+
+        #[test]
+        fn it_considers_a_sync_ready_without_a_synchronisation_id_invalid() {
+            let sync_ready = json::object!{
+                senderId: {
+                    type: 0,
+                    value: "id"
+                }
+            }.dump();
+
+            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
 
             assert!(validation_result.is_err())
         }

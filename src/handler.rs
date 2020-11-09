@@ -27,8 +27,9 @@ impl AlicaMessageTransactionHandler {
         }
     }
 
-    pub fn add_alica_message_parser_for_type(&mut self, message_type: &str, message_parser: Box<dyn AlicaMessageJsonValidator>) {
+    pub fn with_validator_for(&mut self, message_type: &str, message_parser: Box<dyn AlicaMessageJsonValidator>) -> &mut Self {
         self.alica_message_parsers.insert(message_type.to_string(), message_parser);
+        self
     }
 
     fn parse_pipe_separated(
@@ -167,7 +168,7 @@ mod test {
             alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Ok(()));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
-            transaction_handler.add_alica_message_parser_for_type("", Box::from(alica_message_parser));
+            transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
             let mut context = testing::MockTransactionContext::new();
@@ -188,7 +189,7 @@ mod test {
             alica_message_parser.expect_parse_alica_message().times(0).returning(|_| Ok(()));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
-            transaction_handler.add_alica_message_parser_for_type("", Box::from(alica_message_parser));
+            transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
             let mut context = testing::MockTransactionContext::new();
@@ -209,7 +210,7 @@ mod test {
             alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Err(InvalidFormat("".to_string())));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
-            transaction_handler.add_alica_message_parser_for_type("", Box::from(alica_message_parser));
+            transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
             let mut context = testing::MockTransactionContext::new();

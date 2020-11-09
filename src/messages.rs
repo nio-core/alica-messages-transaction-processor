@@ -26,7 +26,7 @@ pub mod json_validation {
 
     pub fn validate_capnzero_id_field(container: &json::object::Object, field: &str) -> AlicaMessageValidationResult {
         match container.get(field) {
-            Some(id) => CapnZeroIdValidator::new().parse_alica_message(id.dump().as_bytes()),
+            Some(id) => CapnZeroIdValidator::new().validate(id.dump().as_bytes()),
             None => Err(MissingField(field.to_string()))
         }
     }
@@ -54,7 +54,7 @@ pub mod json_validation {
             Some(field_json) => match field_json {
                 json::JsonValue::Array(array_json) => {
                     array_json.iter()
-                        .map(|array_entry| validator.parse_alica_message(array_entry.dump().as_bytes()))
+                        .map(|array_entry| validator.validate(array_entry.dump().as_bytes()))
                         .collect()
                 },
                 _ => Err(InvalidFormat(format!("{} is no array", field)))
@@ -99,7 +99,7 @@ pub type AlicaMessageValidationResult = Result<(), AlicaMessageValidationError>;
 
 #[mockall::automock]
 pub trait AlicaMessageJsonValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult;
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult;
 }
 
 pub struct AlicaEngineInfoValidator {}
@@ -111,7 +111,7 @@ impl AlicaEngineInfoValidator {
 }
 
 impl AlicaMessageJsonValidator for AlicaEngineInfoValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let engine_info_root = json_helper::parse_object(message)?;
 
         json_validation::validate_capnzero_id_field(&engine_info_root, "senderId")?;
@@ -135,7 +135,7 @@ impl AllocationAuthorityInfoValidator {
 }
 
 impl AlicaMessageJsonValidator for AllocationAuthorityInfoValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let allocation_authority_info_root = json_helper::parse_object(message)?;
 
         json_validation::validate_capnzero_id_field(&allocation_authority_info_root, "senderId")?;
@@ -158,7 +158,7 @@ impl EntryPointRobotValidator {
 }
 
 impl AlicaMessageJsonValidator for EntryPointRobotValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let entry_point_robot = json_helper::parse_object(message)?;
         json_validation::validate_integer_field(&entry_point_robot, "entrypoint")?;
         json_validation::validate_list_field_with_complex_components(&entry_point_robot, "robots", &CapnZeroIdValidator::new())?;
@@ -175,7 +175,7 @@ impl PlanTreeInfoValidator {
 }
 
 impl AlicaMessageJsonValidator for PlanTreeInfoValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let plan_tree_info = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&plan_tree_info, "senderId")?;
         json_validation::validate_integer_list_field(&plan_tree_info, "stateIds")?;
@@ -193,7 +193,7 @@ impl RoleSwitchValidator {
 }
 
 impl AlicaMessageJsonValidator for RoleSwitchValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let role_switch = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&role_switch, "senderId")?;
         json_validation::validate_integer_field(&role_switch, "roleId")?;
@@ -210,7 +210,7 @@ impl SolverResultValidator {
 }
 
 impl AlicaMessageJsonValidator for SolverResultValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let solver_result = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&solver_result, "senderId")?;
         json_validation::validate_list_field_with_complex_components(&solver_result, "vars", &SolverVarValidator::new())?;
@@ -227,7 +227,7 @@ impl SolverVarValidator {
 }
 
 impl AlicaMessageJsonValidator for SolverVarValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let solver_var = json_helper::parse_object(message)?;
         json_validation::validate_integer_field(&solver_var, "id")?;
         json_validation::validate_integer_list_field(&solver_var, "value")?;
@@ -244,7 +244,7 @@ impl SyncReadyValidator {
 }
 
 impl AlicaMessageJsonValidator for SyncReadyValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let sync_ready = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&sync_ready, "senderId")?;
         json_validation::validate_integer_field(&sync_ready, "synchronisationId")?;
@@ -261,7 +261,7 @@ impl SyncTalkValidator {
 }
 
 impl AlicaMessageJsonValidator for SyncTalkValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let sync_talk = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&sync_talk, "senderId")?;
         json_validation::validate_list_field_with_complex_components(&sync_talk, "syncData", &SyncDataValidator::new())?;
@@ -278,7 +278,7 @@ impl SyncDataValidator {
 }
 
 impl AlicaMessageJsonValidator for SyncDataValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let sync_data = json_helper::parse_object(message)?;
         json_validation::validate_capnzero_id_field(&sync_data, "robotId")?;
         json_validation::validate_integer_field(&sync_data, "transitionId")?;
@@ -297,7 +297,7 @@ impl CapnZeroIdValidator {
 }
 
 impl AlicaMessageJsonValidator for CapnZeroIdValidator {
-    fn parse_alica_message(&self, message: &[u8]) -> AlicaMessageValidationResult {
+    fn validate(&self, message: &[u8]) -> AlicaMessageValidationResult {
         let capnzero_id_root = json_helper::parse_object(message)?;
 
         json_validation::validate_integer_field(&capnzero_id_root, "type")?;
@@ -335,7 +335,7 @@ mod test {
                 ]
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -344,7 +344,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(&message);
+            let validation_result = AlicaEngineInfoValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -353,7 +353,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -362,7 +362,7 @@ mod test {
         fn it_considers_an_alica_engine_info_with_missing_sender_id_invalid() {
             let engine_info = json::object!{}.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -376,7 +376,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -391,7 +391,7 @@ mod test {
                 masterPlan: "master plan"
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -407,7 +407,7 @@ mod test {
                 currentPlan: "current plan"
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -424,7 +424,7 @@ mod test {
                 currentState: "current state"
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -442,7 +442,7 @@ mod test {
                 currentRole: "current role"
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -461,7 +461,7 @@ mod test {
                 currentTask: "current task"
             }.dump();
 
-            let validation_result = AlicaEngineInfoValidator::new().parse_alica_message(engine_info.as_bytes());
+            let validation_result = AlicaEngineInfoValidator::new().validate(engine_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -489,7 +489,7 @@ mod test {
                 ]
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -498,7 +498,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(&message);
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -507,7 +507,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -516,7 +516,7 @@ mod test {
         fn it_considers_an_allocation_authority_info_without_a_sender_id_invalid() {
             let allocation_authority_info = json::object!{}.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -530,7 +530,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -545,7 +545,7 @@ mod test {
                 planId: 1
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -561,7 +561,7 @@ mod test {
                 parentState: 2
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -578,7 +578,7 @@ mod test {
                 planType: 3
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -599,7 +599,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = AllocationAuthorityInfoValidator::new().parse_alica_message(allocation_authority_info.as_bytes());
+            let validation_result = AllocationAuthorityInfoValidator::new().validate(allocation_authority_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -624,7 +624,7 @@ mod test {
                 ]
             }.dump();
 
-            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+            let validation_result = EntryPointRobotValidator::new().validate(entry_point_robot.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -633,7 +633,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = EntryPointRobotValidator::new().parse_alica_message(&message);
+            let validation_result = EntryPointRobotValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -642,7 +642,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = EntryPointRobotValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = EntryPointRobotValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -651,7 +651,7 @@ mod test {
         fn it_considers_an_entry_point_robot_without_entrypoint_invalid() {
             let entry_point_robot = json::object!{}.dump();
 
-            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+            let validation_result = EntryPointRobotValidator::new().validate(entry_point_robot.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -662,7 +662,7 @@ mod test {
                 entrypoint: 0
             }.dump();
 
-            let validation_result = EntryPointRobotValidator::new().parse_alica_message(entry_point_robot.as_bytes());
+            let validation_result = EntryPointRobotValidator::new().validate(entry_point_robot.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -682,7 +682,7 @@ mod test {
                 succeededEps: [4, 5, 6]
             }.dump();
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+            let validation_result = PlanTreeInfoValidator::new().validate(plan_tree_info.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -691,7 +691,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(&message);
+            let validation_result = PlanTreeInfoValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -700,7 +700,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = PlanTreeInfoValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -709,7 +709,7 @@ mod test {
         fn it_considers_a_plan_tree_info_without_a_sender_id_invalid() {
             let plan_tree_info = json::object!{}.dump();
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+            let validation_result = PlanTreeInfoValidator::new().validate(plan_tree_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -723,7 +723,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+            let validation_result = PlanTreeInfoValidator::new().validate(plan_tree_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -738,7 +738,7 @@ mod test {
                 stateIds: [1, 2, 3]
             }.dump();
 
-            let validation_result = PlanTreeInfoValidator::new().parse_alica_message(plan_tree_info.as_bytes());
+            let validation_result = PlanTreeInfoValidator::new().validate(plan_tree_info.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -757,7 +757,7 @@ mod test {
                 roleId: 1
             }.dump();
 
-            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+            let validation_result = RoleSwitchValidator::new().validate(role_switch.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -766,7 +766,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = RoleSwitchValidator::new().parse_alica_message(&message);
+            let validation_result = RoleSwitchValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -775,7 +775,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = RoleSwitchValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = RoleSwitchValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -784,7 +784,7 @@ mod test {
         fn it_considers_a_role_switch_without_sender_id_invalid() {
             let role_switch = json::object!{}.dump();
 
-            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+            let validation_result = RoleSwitchValidator::new().validate(role_switch.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -798,7 +798,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = RoleSwitchValidator::new().parse_alica_message(role_switch.as_bytes());
+            let validation_result = RoleSwitchValidator::new().validate(role_switch.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -826,7 +826,7 @@ mod test {
                 ]
             }.dump();
 
-            let validation_result = SolverResultValidator::new().parse_alica_message(solver_result.as_bytes());
+            let validation_result = SolverResultValidator::new().validate(solver_result.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -835,7 +835,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = SolverResultValidator::new().parse_alica_message(&message);
+            let validation_result = SolverResultValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -844,7 +844,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = SolverResultValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = SolverResultValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -853,7 +853,7 @@ mod test {
         fn it_considers_a_solver_result_without_a_sender_id_invalid() {
             let role_switch = json::object!{}.dump();
 
-            let validation_result = SolverResultValidator::new().parse_alica_message(role_switch.as_bytes());
+            let validation_result = SolverResultValidator::new().validate(role_switch.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -867,7 +867,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = SolverResultValidator::new().parse_alica_message(role_switch.as_bytes());
+            let validation_result = SolverResultValidator::new().validate(role_switch.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -883,7 +883,7 @@ mod test {
                 value: [0, 1, 2]
             }.dump();
 
-            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+            let validation_result = SolverVarValidator::new().validate(solver_var.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -892,7 +892,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = SolverVarValidator::new().parse_alica_message(&message);
+            let validation_result = SolverVarValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -901,7 +901,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = SolverVarValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = SolverVarValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -910,7 +910,7 @@ mod test {
         fn it_considers_a_solver_var_wihtout_an_id_invalid() {
             let solver_var = json::object!{}.dump();
 
-            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+            let validation_result = SolverVarValidator::new().validate(solver_var.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -921,7 +921,7 @@ mod test {
                 id: 0
             }.dump();
 
-            let validation_result = SolverVarValidator::new().parse_alica_message(solver_var.as_bytes());
+            let validation_result = SolverVarValidator::new().validate(solver_var.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -940,7 +940,7 @@ mod test {
                 synchronisationId: 1
             }.dump();
 
-            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+            let validation_result = SyncReadyValidator::new().validate(sync_ready.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -949,7 +949,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = SyncReadyValidator::new().parse_alica_message(&message);
+            let validation_result = SyncReadyValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -958,7 +958,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = SyncReadyValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = SyncReadyValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -967,7 +967,7 @@ mod test {
         fn it_considers_a_sync_ready_without_a_sender_id_invalid() {
             let sync_ready = json::object!{}.dump();
 
-            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+            let validation_result = SyncReadyValidator::new().validate(sync_ready.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -981,7 +981,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = SyncReadyValidator::new().parse_alica_message(sync_ready.as_bytes());
+            let validation_result = SyncReadyValidator::new().validate(sync_ready.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1019,7 +1019,7 @@ mod test {
                 ]
             }.dump();
 
-            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncTalkValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -1028,7 +1028,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = SyncTalkValidator::new().parse_alica_message(&message);
+            let validation_result = SyncTalkValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -1037,7 +1037,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = SyncTalkValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = SyncTalkValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1046,7 +1046,7 @@ mod test {
         fn it_considers_a_sync_talk_without_a_sender_id_invalid() {
             let sync_talk = json::object!{}.dump();
 
-            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncTalkValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1060,7 +1060,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = SyncTalkValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncTalkValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1081,7 +1081,7 @@ mod test {
                 ack: true
             }.dump();
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -1090,7 +1090,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(&message);
+            let validation_result = SyncDataValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -1099,7 +1099,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1108,7 +1108,7 @@ mod test {
         fn it_considers_a_sync_data_without_robot_id_invalid() {
             let sync_talk = json::object!{}.dump();
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1122,7 +1122,7 @@ mod test {
                 }
             }.dump();
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1137,7 +1137,7 @@ mod test {
                 transitionId: 1
             }.dump();
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1153,7 +1153,7 @@ mod test {
                 transitionHolds: true
             }.dump();
 
-            let validation_result = SyncDataValidator::new().parse_alica_message(sync_talk.as_bytes());
+            let validation_result = SyncDataValidator::new().validate(sync_talk.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1169,7 +1169,7 @@ mod test {
                 value: "id"
             }.dump();
 
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+            let validation_result = CapnZeroIdValidator::new().validate(capnzero_id.as_bytes());
 
             assert!(validation_result.is_ok())
         }
@@ -1178,7 +1178,7 @@ mod test {
         fn it_considers_a_non_utf8_message_invalid() {
             let message = vec![0x0];
 
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(&message);
+            let validation_result = CapnZeroIdValidator::new().validate(&message);
 
             assert!(validation_result.is_err())
         }
@@ -1187,7 +1187,7 @@ mod test {
         fn it_considers_a_non_json_message_invalid() {
             let message = "";
 
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(message.as_bytes());
+            let validation_result = CapnZeroIdValidator::new().validate(message.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1196,7 +1196,7 @@ mod test {
         fn it_considers_an_id_without_a_type_invalid() {
             let capnzero_id = json::object!{}.dump();
 
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+            let validation_result = CapnZeroIdValidator::new().validate(capnzero_id.as_bytes());
 
             assert!(validation_result.is_err())
         }
@@ -1207,7 +1207,7 @@ mod test {
                 type: 0
             }.dump();
 
-            let validation_result = CapnZeroIdValidator::new().parse_alica_message(capnzero_id.as_bytes());
+            let validation_result = CapnZeroIdValidator::new().validate(capnzero_id.as_bytes());
 
             assert!(validation_result.is_err())
         }

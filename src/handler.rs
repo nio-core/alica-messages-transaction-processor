@@ -80,11 +80,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
         self.family_namespaces.clone()
     }
 
-    fn apply(
-        &self,
-        request: &TpProcessRequest,
-        context: &mut dyn TransactionContext,
-    ) -> Result<(), ApplyError> {
+    fn apply(&self, request: &TpProcessRequest, context: &mut dyn TransactionContext, ) -> Result<(), ApplyError> {
         println!(
             "Transaction received from {}!",
             &request.get_header().get_signer_public_key()[..6]
@@ -97,8 +93,7 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 
         let transaction_address = self.state_address_for(&transaction_payload);
         let transaction_applicator = sawtooth::TransactionApplicator::new(context);
-        transaction_applicator.create_state_entry(&transaction_address,
-                                                  &transaction_payload.message_bytes)
+        transaction_applicator.create_at(&transaction_payload.message_bytes, &transaction_address)
     }
 }
 
@@ -169,7 +164,7 @@ mod test {
             transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
-            alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Ok(()));
+            alica_message_parser.expect_validate().times(1).returning(|_| Ok(()));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));
@@ -190,7 +185,7 @@ mod test {
             transaction_payload_parser.expect_parse().times(1).returning(|_| Err(ParsingError::InvalidPayload("".to_string())));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
-            alica_message_parser.expect_parse_alica_message().times(0).returning(|_| Ok(()));
+            alica_message_parser.expect_validate().times(0).returning(|_| Ok(()));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));
@@ -211,7 +206,7 @@ mod test {
             transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
-            alica_message_parser.expect_parse_alica_message().times(1).returning(|_| Err(InvalidFormat("".to_string())));
+            alica_message_parser.expect_validate().times(1).returning(|_| Err(InvalidFormat("".to_string())));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));

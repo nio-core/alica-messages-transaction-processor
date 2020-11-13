@@ -1,7 +1,5 @@
-use sawtooth_sdk::processor::handler::{
-    ApplyError::{self, InternalError},
-    TransactionContext,
-};
+use sawtooth_sdk::processor::handler::TransactionContext;
+use sawtooth_sdk::processor::handler::ApplyError::{self, InvalidTransaction};
 
 pub struct TransactionApplicator<'a> {
     context: &'a mut dyn TransactionContext,
@@ -12,48 +10,23 @@ impl<'a> TransactionApplicator<'a> {
         TransactionApplicator { context }
     }
 
-    pub fn fetch_state_entries(
-        &self,
-        state_address: &str,
-    ) -> Result<Vec<(String, Vec<u8>)>, ApplyError> {
-        self.context
-            .get_state_entries(&vec![state_address.to_string()])
-            .map_err(|e| {
-                InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    &state_address, e
-                ))
-            })
-    }
-
-    pub fn create_state_entry(&self, state_address: &str, data: &[u8]) -> Result<(), ApplyError> {
-        let state_entries = self.fetch_state_entries(&state_address)?;
-
-        let state_entry_count = state_entries.len();
-        match state_entry_count {
-            0 => self.store_state_entry((state_address, data)),
-            1 => Err(InternalError(format!(
-                "Message with address {} already exists",
-                state_address
-            ))),
-            _ => Err(InternalError(format!(
-                "Inconsistent state detected: address {} refers to {} entries",
-                state_address, state_entry_count
-            ))),
+    pub fn create_at(&self, data: &[u8], state_address: &str) -> Result<(), ApplyError> {
+        let state_entry = self.fetch(&state_address)?;
+        match state_entry {
+            Some(_) => Err(InvalidTransaction(format!("Message with address {} already exists", state_address))),
+            None => self.store_at(data, state_address)
         }
     }
 
-    fn store_state_entry(&self, state_entry: (&str, &[u8])) -> Result<(), ApplyError> {
-        let destination_address = String::from(state_entry.0);
-        let data = state_entry.1.to_vec();
+    pub fn fetch(&self, state_address: &str) -> Result<Option<Vec<u8>>, ApplyError> {
+        self.context.get_state_entry(state_address)
+            .map_err(|error| ApplyError::from(error))
+    }
+
+    fn store_at(&self, data: &[u8], address: &str) -> Result<(), ApplyError> {
         self.context
-            .set_state_entries(vec![(destination_address, data)])
-            .map_err(|e| {
-                ApplyError::InternalError(format!(
-                    "Internal error while trying to access state address {}. Error was {}",
-                    state_entry.0, e
-                ))
-            })
+            .set_state_entry(address.to_string(), data.to_vec())
+            .map_err(|error| ApplyError::from(error))
     }
 }
 
@@ -70,7 +43,7 @@ mod test {
         context.expect_set_state_entries().times(1).returning(|_| Ok(()));
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+        let transaction_application_result = transaction_applicator.create_at(value, address);
 
         assert!(transaction_application_result.is_ok())
     }
@@ -85,7 +58,7 @@ mod test {
         context.expect_set_state_entries().times(0);
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+        let transaction_application_result = transaction_applicator.create_at(value, address);
 
         assert!(transaction_application_result.is_err())
     }
@@ -103,7 +76,7 @@ mod test {
         context.expect_set_state_entries().times(0);
         let transaction_applicator = TransactionApplicator::new(&mut context);
 
-        let transaction_application_result = transaction_applicator.create_state_entry(address, value);
+        let transaction_application_result = transaction_applicator.create_at(value, address);
 
         assert!(transaction_application_result.is_err())
     }

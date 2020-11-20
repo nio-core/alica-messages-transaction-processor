@@ -11,12 +11,12 @@ pub struct AlicaMessageTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
     family_namespaces: Vec<String>,
-    transaction_payload_parser: Box<dyn payloads::Parser>,
+    payload_format: Box<dyn payloads::Format>,
     alica_message_validators: HashMap<String, Box<dyn AlicaMessageJsonValidator>>
 }
 
 impl AlicaMessageTransactionHandler {
-    pub fn new(transaction_payload_parser: Box<dyn payloads::Parser>) -> Self {
+    pub fn new(payload_format: Box<dyn payloads::Format>) -> Self {
         let family_name = "alica_messages";
         let family_name_hash = util::hash(family_name);
 
@@ -24,7 +24,7 @@ impl AlicaMessageTransactionHandler {
             family_name: String::from(family_name),
             family_versions: vec![String::from("0.1.0")],
             family_namespaces: vec![String::from(&family_name_hash[..6])],
-            transaction_payload_parser,
+            payload_format,
             alica_message_validators: HashMap::new()
         }
     }
@@ -36,8 +36,8 @@ impl AlicaMessageTransactionHandler {
 
     fn parse_pipe_separated(&self, transaction_payload_bytes: &[u8]) -> Result<payloads::TransactionPayload, ApplyError> {
         println!("Parsing received payload");
-        let parsing_result = self.transaction_payload_parser
-            .parse(transaction_payload_bytes)
+        let parsing_result = self.payload_format
+            .deserialize(transaction_payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)));
         println!("-> Payload format valid: Pipe separated");
         parsing_result
@@ -115,8 +115,8 @@ mod test {
         use sawtooth_alica_message_transaction_payload::payloads;
 
         fn transaction_handler() -> AlicaMessageTransactionHandler {
-            let transaction_payload_parser: Box<dyn payloads::Parser> = Box::new(payloads::MockParser::new());
-            AlicaMessageTransactionHandler::new(transaction_payload_parser)
+            let transaction_payload_format: Box<dyn payloads::Format> = Box::new(payloads::MockFormat::new());
+            AlicaMessageTransactionHandler::new(transaction_payload_format)
         }
 
         #[test]
@@ -158,7 +158,7 @@ mod test {
         use sawtooth_sdk::messages::transaction::TransactionHeader;
         use sawtooth_alica_message_transaction_payload::messages::{AlicaMessageValidationError,
                                                                    MockAlicaMessageJsonValidator};
-        use sawtooth_alica_message_transaction_payload::payloads::{MockParser, TransactionPayload, ParsingError};
+        use sawtooth_alica_message_transaction_payload::payloads;
 
         fn transaction_processing_request() -> TpProcessRequest {
             let mut transaction_header = TransactionHeader::new();
@@ -171,13 +171,13 @@ mod test {
 
         #[test]
         fn apply_adds_transaction_if_it_is_well_structured() {
-            let mut transaction_payload_parser = Box::new(MockParser::new());
-            transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
+            let mut transaction_payload_format = Box::new(payloads::MockFormat::new());
+            transaction_payload_format.expect_deserialize().times(1).returning(|_| Ok(payloads::TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
             alica_message_parser.expect_validate().times(1).returning(|_| Ok(()));
 
-            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_format);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
@@ -192,13 +192,13 @@ mod test {
 
         #[test]
         fn apply_does_not_add_transaction_if_it_is_not_well_structured() {
-            let mut transaction_payload_parser = Box::new(MockParser::new());
-            transaction_payload_parser.expect_parse().times(1).returning(|_| Err(ParsingError::InvalidPayload("".to_string())));
+            let mut transaction_payload_format = Box::new(payloads::MockFormat::new());
+            transaction_payload_format.expect_deserialize().times(1).returning(|_| Err(payloads::Error::InvalidPayload("".to_string())));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
             alica_message_parser.expect_validate().times(0).returning(|_| Ok(()));
 
-            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_format);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
@@ -213,13 +213,13 @@ mod test {
 
         #[test]
         fn apply_does_not_add_transaction_its_contained_message_is_not_valid() {
-            let mut transaction_payload_parser = Box::new(MockParser::new());
-            transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
+            let mut transaction_payload_format = Box::new(payloads::MockFormat::new());
+            transaction_payload_format.expect_deserialize().times(1).returning(|_| Ok(payloads::TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
             alica_message_parser.expect_validate().times(1).returning(|_| Err(AlicaMessageValidationError::InvalidFormat("".to_string())));
 
-            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_format);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));
 
             let request = transaction_processing_request();
@@ -234,10 +234,10 @@ mod test {
 
         #[test]
         fn apply_does_not_add_transaction_if_no_validator_for_the_contained_message_type_is_available() {
-            let mut transaction_payload_parser = Box::new(MockParser::new());
-            transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
+            let mut transaction_payload_format = Box::new(payloads::MockFormat::new());
+            transaction_payload_format.expect_deserialize().times(1).returning(|_| Ok(payloads::TransactionPayload::default()));
 
-            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
+            let transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_format);
 
             let request = transaction_processing_request();
             let mut context = testing::MockTransactionContext::new();

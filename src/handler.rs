@@ -1,21 +1,23 @@
-use crate::{sawtooth, util, payload};
+use crate::{sawtooth, util};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
 use sawtooth_alica_message_transaction_payload::messages::AlicaMessageJsonValidator;
+use sawtooth_alica_message_transaction_payload::payloads;
 
 use std::collections::HashMap;
+use payloads::TransactionPayload;
 
 pub struct AlicaMessageTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
     family_namespaces: Vec<String>,
-    transaction_payload_parser: Box<dyn payload::Parser>,
+    transaction_payload_parser: Box<dyn payloads::Parser>,
     alica_message_validators: HashMap<String, Box<dyn AlicaMessageJsonValidator>>
 }
 
 impl AlicaMessageTransactionHandler {
-    pub fn new(transaction_payload_parser: Box<dyn payload::Parser>) -> Self {
+    pub fn new(transaction_payload_parser: Box<dyn payloads::Parser>) -> Self {
         let family_name = "alica_messages";
         let family_name_hash = util::hash(family_name);
 
@@ -33,7 +35,7 @@ impl AlicaMessageTransactionHandler {
         self
     }
 
-    fn parse_pipe_separated(&self, transaction_payload_bytes: &[u8]) -> Result<payload::TransactionPayload, ApplyError> {
+    fn parse_pipe_separated(&self, transaction_payload_bytes: &[u8]) -> Result<TransactionPayload, ApplyError> {
         println!("Parsing received payload");
         let parsing_result = self.transaction_payload_parser
             .parse(transaction_payload_bytes)
@@ -42,7 +44,7 @@ impl AlicaMessageTransactionHandler {
         parsing_result
     }
 
-    fn state_address_for(&self, transaction_payload: &payload::TransactionPayload) -> String {
+    fn state_address_for(&self, transaction_payload: &TransactionPayload) -> String {
         let payload_part_of_state_address = format!(
             "{}{}{}",
             transaction_payload.agent_id,
@@ -60,7 +62,7 @@ impl AlicaMessageTransactionHandler {
         )
     }
 
-    fn validate_contained_message(&self, payload: &payload::TransactionPayload) -> Result<(), ApplyError> {
+    fn validate_contained_message(&self, payload: &TransactionPayload) -> Result<(), ApplyError> {
         println!("Validating message for type {}", payload.message_type);
         let message_validator = self.alica_message_validators.get(&payload.message_type)
             .ok_or_else(|| InvalidTransaction(format!("No matching message validator for {} available", &payload.message_type)))?;
@@ -109,17 +111,18 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 #[cfg(test)]
 mod test {
     mod state_address_generation {
-        use crate::{payload, util};
+        use crate::util;
         use crate::handler::AlicaMessageTransactionHandler;
+        use sawtooth_alica_message_transaction_payload::payloads;
 
         fn transaction_handler() -> AlicaMessageTransactionHandler {
-            let transaction_payload_parser: Box<dyn payload::Parser> = Box::new(payload::MockParser::new());
+            let transaction_payload_parser: Box<dyn payloads::Parser> = Box::new(payloads::MockParser::new());
             AlicaMessageTransactionHandler::new(transaction_payload_parser)
         }
 
         #[test]
         fn generated_address_is_70_bytes_in_size() {
-            let parsed_payload = payload::TransactionPayload::default();
+            let parsed_payload = payloads::TransactionPayload::default();
 
             let state_address = transaction_handler().state_address_for(&parsed_payload);
 
@@ -128,7 +131,7 @@ mod test {
 
         #[test]
         fn generated_address_starts_with_transaction_family_namespace() {
-            let parsed_payload = payload::TransactionPayload::default();
+            let parsed_payload = payloads::TransactionPayload::default();
 
             let state_address = transaction_handler().state_address_for(&parsed_payload);
 
@@ -138,7 +141,7 @@ mod test {
 
         #[test]
         fn generated_address_ends_with_a_hash_built_from_the_transaction_payload_meta_data() {
-            let parsed_payload = payload::TransactionPayload::default();
+            let parsed_payload = payloads::TransactionPayload::default();
 
             let state_address = transaction_handler().state_address_for(&parsed_payload);
 
@@ -150,13 +153,13 @@ mod test {
 
     mod transaction_application {
         use crate::handler::AlicaMessageTransactionHandler;
-        use crate::payload::{MockParser, TransactionPayload, ParsingError};
         use crate::testing;
         use sawtooth_sdk::processor::handler::TransactionHandler;
         use sawtooth_sdk::messages::processor::TpProcessRequest;
         use sawtooth_sdk::messages::transaction::TransactionHeader;
         use sawtooth_alica_message_transaction_payload::messages::{AlicaMessageValidationError,
                                                                    MockAlicaMessageJsonValidator};
+        use sawtooth_alica_message_transaction_payload::payloads::{MockParser, TransactionPayload, ParsingError};
 
         fn transaction_processing_request() -> TpProcessRequest {
             let mut transaction_header = TransactionHeader::new();

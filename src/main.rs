@@ -5,7 +5,7 @@ use sawtooth_alica_message_transaction_payload::messages::json::{AlicaEngineInfo
                                                                  PlanTreeInfoValidator, SolverResultValidator,
                                                                  RoleSwitchValidator, SyncReadyValidator,
                                                                  SyncTalkValidator};
-use sawtooth_alica_message_transaction_payload::payloads::pipe_separated::PipeSeparatedPayloadParser;
+use sawtooth_alica_message_transaction_payload::payloads;
 
 fn main() {
     let args = clap::App::new("alica-messages-tp")
@@ -23,8 +23,8 @@ fn main() {
 
     let validator_url = args.value_of("connect").expect("Missing validator address!");
 
-    let payload_parser = Box::from(PipeSeparatedPayloadParser::new());
-    let mut transaction_handler = AlicaMessageTransactionHandler::new(payload_parser);
+    let payload_format = Box::from(payloads::pipe_separated::Format::default());
+    let mut transaction_handler = AlicaMessageTransactionHandler::new(payload_format);
     transaction_handler
         .with_validator_for("ALICA_ENGINE_INFO", Box::from(AlicaEngineInfoValidator::new()))
         .with_validator_for("ALLOCATION_AUTHORITY_INFO", Box::from(AllocationAuthorityInfoValidator::new()))

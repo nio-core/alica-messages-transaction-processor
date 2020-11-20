@@ -2,7 +2,8 @@ use crate::{sawtooth, util, payload};
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
-use crate::messages::AlicaMessageJsonValidator;
+use sawtooth_alica_message_transaction_payload::messages::AlicaMessageJsonValidator;
+
 use std::collections::HashMap;
 
 pub struct AlicaMessageTransactionHandler {
@@ -150,12 +151,12 @@ mod test {
     mod transaction_application {
         use crate::handler::AlicaMessageTransactionHandler;
         use crate::payload::{MockParser, TransactionPayload, ParsingError};
-        use crate::messages::{MockAlicaMessageJsonValidator};
         use crate::testing;
         use sawtooth_sdk::processor::handler::TransactionHandler;
         use sawtooth_sdk::messages::processor::TpProcessRequest;
         use sawtooth_sdk::messages::transaction::TransactionHeader;
-        use crate::messages::AlicaMessageValidationError::InvalidFormat;
+        use sawtooth_alica_message_transaction_payload::messages::{AlicaMessageValidationError,
+                                                                   MockAlicaMessageJsonValidator};
 
         fn transaction_processing_request() -> TpProcessRequest {
             let mut transaction_header = TransactionHeader::new();
@@ -214,7 +215,7 @@ mod test {
             transaction_payload_parser.expect_parse().times(1).returning(|_| Ok(TransactionPayload::default()));
 
             let mut alica_message_parser = MockAlicaMessageJsonValidator::new();
-            alica_message_parser.expect_validate().times(1).returning(|_| Err(InvalidFormat("".to_string())));
+            alica_message_parser.expect_validate().times(1).returning(|_| Err(AlicaMessageValidationError::InvalidFormat("".to_string())));
 
             let mut transaction_handler = AlicaMessageTransactionHandler::new(transaction_payload_parser);
             transaction_handler.with_validator_for("", Box::from(alica_message_parser));

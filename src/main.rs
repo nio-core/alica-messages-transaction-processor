@@ -1,8 +1,11 @@
 use alica_messages_tp::handler::AlicaMessageTransactionHandler;
 use sawtooth_sdk::processor::TransactionProcessor;
 use alica_messages_tp::payload::parser::PipeSeparatedPayloadParser;
-use alica_messages_tp::messages::{AlicaEngineInfoValidator, AllocationAuthorityInfoValidator, PlanTreeInfoValidator, SolverResultValidator, RoleSwitchValidator,
-                                  SyncReadyValidator, SyncTalkValidator};
+use sawtooth_alica_message_transaction_payload::messages::json::{AlicaEngineInfoValidator,
+                                                                 AllocationAuthorityInfoValidator,
+                                                                 PlanTreeInfoValidator, SolverResultValidator,
+                                                                 RoleSwitchValidator, SyncReadyValidator,
+                                                                 SyncTalkValidator};
 
 fn main() {
     let args = clap::App::new("alica-messages-tp")

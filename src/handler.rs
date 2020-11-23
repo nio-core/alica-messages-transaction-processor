@@ -42,7 +42,8 @@ impl AlicaMessageTransactionHandler {
         let transaction_applicator = sawtooth::TransactionApplicator::new(context);
 
         println!("Trying to create state entry for address {}", &transaction_address);
-        transaction_applicator.create_at(&payload.message_bytes, &transaction_address)?;
+        let transaction_data = self.payload_format.serialize(payload).map_err(|_| InvalidTransaction("Could not serialize transaction payload".to_string()))?;
+        transaction_applicator.create_at(&transaction_data, &transaction_address)?;
         println!("-> State entry created successfully");
 
         Ok(())

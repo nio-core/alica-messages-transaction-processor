@@ -30,6 +30,7 @@ impl<'a> TransactionApplicator<'a> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::TransactionApplicator;
     use crate::testing::MockTransactionContext;

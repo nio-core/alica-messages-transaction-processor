@@ -2,11 +2,11 @@ use crate::sawtooth;
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError::InvalidTransaction;
 use sawtooth_sdk::processor::handler::{ApplyError, TransactionContext, TransactionHandler};
-use sawtooth_alica_message_transaction_payload::messages::AlicaMessageJsonValidator;
+use sawtooth_alica_payload::messages::AlicaMessageJsonValidator;
 
 use std::collections::HashMap;
-use sawtooth_alica_message_transaction_payload::{payloads, TransactionFamily};
-use sawtooth_alica_message_transaction_payload::payloads::TransactionPayload;
+use sawtooth_alica_payload::{payloads, TransactionFamily};
+use sawtooth_alica_payload::payloads::TransactionPayload;
 
 pub struct AlicaMessageTransactionHandler {
     family: TransactionFamily,
@@ -96,9 +96,9 @@ mod test {
     use sawtooth_sdk::processor::handler::TransactionHandler;
     use sawtooth_sdk::messages::processor::TpProcessRequest;
     use sawtooth_sdk::messages::transaction::TransactionHeader;
-    use sawtooth_alica_message_transaction_payload::messages::{AlicaMessageValidationError,
+    use sawtooth_alica_payload::messages::{AlicaMessageValidationError,
                                                                MockAlicaMessageJsonValidator};
-    use sawtooth_alica_message_transaction_payload::{payloads, TransactionFamily};
+    use sawtooth_alica_payload::{payloads, TransactionFamily};
 
     fn transaction_processing_request() -> TpProcessRequest {
         let mut transaction_header = TransactionHeader::new();
@@ -116,6 +116,7 @@ mod test {
     #[test]
     fn apply_adds_transaction_if_it_is_well_structured() {
         let mut transaction_payload_format = Box::new(payloads::MockFormat::new());
+        transaction_payload_format.expect_serialize().times(1).returning(|_| Ok(vec![]));
         transaction_payload_format.expect_deserialize().times(1).returning(|_| Ok(payloads::TransactionPayload::default()));
 
         let mut alica_message_parser = MockAlicaMessageJsonValidator::new();

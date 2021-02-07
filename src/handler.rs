@@ -29,33 +29,25 @@ impl AlicaMessageTransactionHandler {
     }
 
     fn parse_payload(&self, transaction_payload_bytes: &[u8]) -> Result<payloads::TransactionPayload, ApplyError> {
-        println!("Parsing received payload");
         let parsing_result = self.payload_format
             .deserialize(transaction_payload_bytes)
             .map_err(|e| InvalidTransaction(format!("Error parsing payload: {}", e)));
-        println!("-> Payload format valid: Pipe separated");
         parsing_result
     }
 
     fn try_create_state_entry_for(&self, context: &mut dyn TransactionContext, payload: &TransactionPayload) -> Result<(), ApplyError> {
         let transaction_address = self.family.calculate_state_address_for(&payload);
         let transaction_applicator = sawtooth::TransactionApplicator::new(context);
-
-        println!("Trying to create state entry for address {}", &transaction_address);
         let transaction_data = self.payload_format.serialize(payload).map_err(|_| InvalidTransaction("Could not serialize transaction payload".to_string()))?;
         transaction_applicator.create_at(&transaction_data, &transaction_address)?;
-        println!("-> State entry created successfully");
-
         Ok(())
     }
 
     fn validate_contained_message(&self, payload: &payloads::TransactionPayload) -> Result<(), ApplyError> {
-        println!("Validating message for type {}", payload.message_type);
         let message_validator = self.alica_message_validators.get(&payload.message_type)
             .ok_or_else(|| InvalidTransaction(format!("No matching message validator for {} available", &payload.message_type)))?;
         let validation_result = message_validator.validate(&payload.message_bytes)
             .map_err(|e| InvalidTransaction(e.into()));
-        println!("-> Validation successful");
         validation_result
     }
 }
@@ -75,16 +67,9 @@ impl TransactionHandler for AlicaMessageTransactionHandler {
 
     fn apply(&self, request: &TpProcessRequest, context: &mut dyn TransactionContext) -> Result<(), ApplyError> {
         let transaction_payload_bytes = request.get_payload();
-        let transaction_signer = request.get_header().get_signer_public_key();
-        println!(
-            "Transaction received from {}!\n-> Payload is {}", &transaction_signer[..6],
-            String::from_utf8(transaction_payload_bytes.to_vec()).map_err(|e| InvalidTransaction(format!("Invalid transaction,  error was {}", e)))?
-        );
-
         let transaction_payload = self.parse_payload(transaction_payload_bytes)?;
         self.validate_contained_message(&transaction_payload)?;
         self.try_create_state_entry_for(context, &transaction_payload)?;
-
         Ok(())
     }
 }
